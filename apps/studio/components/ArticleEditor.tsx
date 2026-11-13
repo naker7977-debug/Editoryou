@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@press/db/browser';
 import { ARTICLE_STATUS_LABEL, type Article, type ArticleStatus, type Publication } from '@press/db';
-import { words } from '@press/ui';
+import { imgSrc, words } from '@press/ui';
 import { MediaPicker } from './MediaPicker';
 import { deleteArticle } from '@/lib/actions';
 import { Toast, useToast } from './Toast';
@@ -64,7 +64,7 @@ export function ArticleEditor({ article, pub, canEdit, isEditor }: { article: Ar
         <aside className="border-l border-[var(--line)] bg-[var(--panel)] p-5 space-y-5">
           <div>
             <div className="text-[10px] tracking-[.2em] uppercase text-[var(--gold)] font-semibold mb-2">Foto utama</div>
-            {a.cover_url ? <img src={a.cover_url} alt="" className="w-full rounded-md border border-[var(--line)]" /> : <div className="aspect-[4/3] rounded-md border border-dashed border-[var(--line)] flex items-center justify-center text-xs text-[var(--muted)]">Belum ada foto</div>}
+            {a.cover_url ? <img src={imgSrc(a.cover_url) ?? undefined} alt="" className="w-full rounded-md border border-[var(--line)]" /> : <div className="aspect-[4/3] rounded-md border border-dashed border-[var(--line)] flex items-center justify-center text-xs text-[var(--muted)]">Belum ada foto</div>}
             {!ro && <div className="flex gap-2 mt-2"><button className="btn sm" onClick={() => setPick(true)}>Pilih / unggah</button>{a.cover_url && <button className="btn sm" onClick={() => set('cover_url', null)}>Lepas</button>}</div>}
             <div className="field mt-3"><label>Keterangan foto</label><input type="text" value={a.cover_caption ?? ''} readOnly={ro} onChange={e => set('cover_caption', e.target.value)} /></div>
           </div>

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createClient } from '@press/db/browser';
 import { ARTICLE_STATUS_LABEL, type Article, type Edition, type EditionAccess, type EditionStatus, type Publication } from '@press/db';
 import {
-  BLOCK_TYPES, PAGE_PRESETS, PageView, markOverflow, newBlock, newPage, normalizeEdition, freezeEdition, words, uid,
+  BLOCK_TYPES, PAGE_PRESETS, PageView, markOverflow, newBlock, newPage, normalizeEdition, freezeEdition, words, uid, imgSrc,
   type ArticleMap, type Block, type BlockType, type EditionData, type Page,
 } from '@press/ui';
 import { MediaPicker } from './MediaPicker';
@@ -178,8 +178,8 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
           </section>
 
           <section className="sect">
-            <h4>Halaman ({data.pages.length})
-              <select className="input" style={{ width: 'auto', padding: '.2rem .4rem', fontSize: '.7rem' }} value="" onChange={e => { if (e.target.value) addPage(e.target.value); }}>
+            <h4><span className="whitespace-nowrap">Halaman ({data.pages.length})</span>
+              <select className="input" style={{ width: 'auto', maxWidth: 120, padding: '.2rem .4rem', fontSize: '.7rem', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }} value="" onChange={e => { if (e.target.value) addPage(e.target.value); }}>
                 <option value="">+ Tambah…</option>
                 {presets.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
@@ -387,10 +387,10 @@ function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleM
         <section className="sect">
           <h4>{b.type === 'cover' || b.type === 'feature' ? 'Foto latar' : 'Gambar'}</h4>
           {(ro && linked?.cover_url) ? (
-            <div className="text-xs text-[var(--muted)]"><img src={linked.cover_url} alt="" className="w-full rounded mb-2" />Foto mengikuti naskah tertaut.</div>
+            <div className="text-xs text-[var(--muted)]"><img src={imgSrc(linked.cover_url, mag) ?? undefined} alt="" className="w-full rounded mb-2" />Foto mengikuti naskah tertaut.</div>
           ) : (
             <>
-              {b.img?.url ? <img src={b.img.url} alt="" className="w-full rounded border border-[var(--line)] mb-2" /> : <div className="rounded border border-dashed border-[var(--line)] h-20 flex items-center justify-center text-xs text-[var(--muted)] mb-2">Belum ada gambar</div>}
+              {b.img?.url ? <img src={imgSrc(b.img.url, mag) ?? undefined} alt="" className="w-full rounded border border-[var(--line)] mb-2" /> : <div className="rounded border border-dashed border-[var(--line)] h-20 flex items-center justify-center text-xs text-[var(--muted)] mb-2">Belum ada gambar</div>}
               <div className="flex gap-2 mb-2"><button className="btn sm" onClick={() => pickImage(m => setB('img', { url: m.url, path: m.path ?? null }))}>Pilih / unggah</button>{b.img && <button className="btn sm" onClick={() => setB('img', null)}>Lepas</button>}</div>
             </>
           )}
@@ -403,7 +403,7 @@ function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleM
         <section className="sect"><h4>Galeri (maks 4)</h4>
           <div className="grid grid-cols-2 gap-2 mb-2">
             {(b.images ?? []).map((im, i) => (
-              <div key={i} className="relative group"><img src={im.url} alt="" className="w-full aspect-[4/3] object-cover rounded border border-[var(--line)]" /><button className="btn sm absolute top-1 right-1 opacity-0 group-hover:opacity-100" onClick={() => setB('images', (b.images ?? []).filter((_, j) => j !== i))}>✕</button></div>
+              <div key={i} className="relative group"><img src={imgSrc(im.url, mag) ?? undefined} alt="" className="w-full aspect-[4/3] object-cover rounded border border-[var(--line)]" /><button className="btn sm absolute top-1 right-1 opacity-0 group-hover:opacity-100" onClick={() => setB('images', (b.images ?? []).filter((_, j) => j !== i))}>✕</button></div>
             ))}
           </div>
           {(b.images ?? []).length < 4 && <button className="btn sm" onClick={() => pickImage(m => setB('images', [...(b.images ?? []), { url: m.url, path: m.path ?? null }]))}>+ Tambah foto</button>}

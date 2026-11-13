@@ -14,6 +14,6 @@ export default async function ArticlePage({ params }: { params: Promise<{ pub: s
   if (!data) notFound();
   const a = data as unknown as Article;
   const isEditor = role === 'superadmin' || role === 'chief' || role === 'editor' || role === 'designer';
-  const canEdit = isEditor || (a.author_id === userId && a.status !== 'published');
+  const canEdit = isEditor || (a.author_id === userId && ['draft', 'review', 'ready'].includes(a.status));
   return <ArticleEditor article={a} pub={pub} canEdit={canEdit} isEditor={isEditor} />;
 }

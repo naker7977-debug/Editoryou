@@ -184,12 +184,15 @@ language sql stable security definer set search_path = public as $$
       and (s.publication_id is null or s.publication_id = pub))
 $$;
 
--- Cegah pengguna biasa menaikkan dirinya jadi superadmin (service role & superadmin boleh)
+-- Cegah pengguna biasa menaikkan dirinya jadi superadmin.
+-- Boleh: superadmin, service role (aplikasi admin), SQL Editor (postgres), dan bootstrap claim_first_superadmin.
 create or replace function public.guard_profile_update() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if new.role is distinct from old.role
      and not public.is_superadmin()
-     and coalesce(current_setting('request.jwt.claim.role', true), '') <> 'service_role' then
+     and coalesce(auth.role(), '') <> 'service_role'
+     and session_user not in ('postgres', 'supabase_admin')
+     and coalesce(current_setting('app.bootstrap_superadmin', true), '') <> 'on' then
     raise exception 'Tidak diizinkan mengubah peran';
   end if;
   return new;
@@ -203,9 +206,45 @@ language plpgsql security definer set search_path = public as $$
 begin
   if auth.uid() is null then return false; end if;
   if exists (select 1 from public.profiles where role = 'superadmin') then return false; end if;
+  -- profil bisa belum ada bila pengguna dibuat sebelum trigger dipasang
+  insert into public.profiles (id, email) select id, email from auth.users where id = auth.uid() on conflict (id) do nothing;
+  perform set_config('app.bootstrap_superadmin', 'on', true);
   update public.profiles set role = 'superadmin' where id = auth.uid();
-  return found;
+  perform set_config('app.bootstrap_superadmin', '', true);
+  return true;
 end $$;
+
+-- Menerbitkan / menarik edisi hanya untuk pemimpin redaksi & redaktur (penata letak boleh menata, tidak menerbitkan)
+create or replace function public.can_publish_publication(pub uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_superadmin() or coalesce(public.member_role_of(pub) in ('chief','editor'), false)
+$$;
+create or replace function public.guard_edition_status() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return new; end if;  -- service role / SQL Editor
+  if (tg_op = 'INSERT' and new.status = 'published')
+     or (tg_op = 'UPDATE' and new.status is distinct from old.status and 'published' in (new.status, old.status)) then
+    if not public.can_publish_publication(new.publication_id) then
+      raise exception 'Hanya pemimpin redaksi atau redaktur yang dapat menerbitkan / menarik edisi';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists editions_status_guard on public.editions;
+create trigger editions_status_guard before insert or update on public.editions for each row execute procedure public.guard_edition_status();
+
+-- Penulis/wartawan tidak boleh menandai naskahnya sendiri "Terbit"/"Arsip"; itu wewenang redaktur
+create or replace function public.guard_article_status() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return new; end if;
+  if new.status in ('published','archived') and (tg_op = 'INSERT' or new.status is distinct from old.status)
+     and not public.can_edit_publication(new.publication_id) then
+    raise exception 'Status naskah ini hanya dapat diubah oleh redaktur';
+  end if;
+  return new;
+end $$;
+drop trigger if exists articles_status_guard on public.articles;
+create trigger articles_status_guard before insert or update on public.articles for each row execute procedure public.guard_article_status();
 
 -- Ringkasan untuk dashboard admin (dibaca dengan service role / superadmin)
 drop view if exists public.v_admin_stats;
@@ -285,9 +324,9 @@ create policy snapshots_select on public.edition_snapshots for select using (
 );
 drop policy if exists snapshots_write on public.edition_snapshots;
 create policy snapshots_write on public.edition_snapshots for all using (
-  exists (select 1 from public.editions e where e.id = edition_id and public.can_edit_publication(e.publication_id))
+  exists (select 1 from public.editions e where e.id = edition_id and public.can_publish_publication(e.publication_id))
 ) with check (
-  exists (select 1 from public.editions e where e.id = edition_id and public.can_edit_publication(e.publication_id))
+  exists (select 1 from public.editions e where e.id = edition_id and public.can_publish_publication(e.publication_id))
 );
 
 -- media

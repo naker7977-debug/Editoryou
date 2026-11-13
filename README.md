@@ -22,7 +22,16 @@ Paket bersama:
 4. **Terbitkan** → isi naskah dibekukan menjadi *snapshot*; edisi langsung tampil di aplikasi Pembaca. Edisi berakses *Pelanggan* hanya terbuka bagi pembaca dengan langganan aktif.
 5. **Pembaca** mendaftar, memilih paket, membayar; **Admin** mengaktifkan langganan (pembayaran otomatis Midtrans/Xendit menyusul pada tahap berikutnya).
 
-Peran redaksi: `chief` (Pemimpin Redaksi — semua hak + pengaturan penerbit), `editor` (Redaktur — tata letak, terbitkan, sunting semua naskah), `designer` (Penata Letak — tata letak tanpa menerbitkan), `journalist` / `writer` (naskah sendiri).
+Peran redaksi (ditegakkan di database lewat RLS + trigger, bukan hanya di UI):
+
+| Peran | Naskah | Tata letak edisi | Terbitkan / tarik edisi | Pengaturan penerbit |
+|---|---|---|---|---|
+| `chief` Pemimpin Redaksi | semua | ✓ | ✓ | ✓ |
+| `editor` Redaktur | semua | ✓ | ✓ | – |
+| `designer` Penata Letak | semua | ✓ | – | – |
+| `journalist` Wartawan / `writer` Penulis | milik sendiri, status Draf → Menunggu Redaktur | – | – | – |
+
+Hanya redaktur ke atas yang dapat menandai naskah *Terbit*/*Arsip*. Peran global `superadmin` hanya dapat diberikan oleh superadmin lain, aplikasi admin (service role), atau sekali lewat `/setup` saat belum ada superadmin sama sekali.
 
 ---
 
@@ -32,7 +41,11 @@ Peran redaksi: `chief` (Pemimpin Redaksi — semua hak + pengaturan penerbit), `
 2. Buka **SQL Editor** → *New query* → tempel seluruh isi `supabase/migrations/0001_init.sql` → **Run**. (Aman dijalankan ulang.)
 3. Opsional: jalankan `supabase/seed.sql` untuk dua penerbit contoh + paket.
 4. **Authentication → Providers → Email**: aktif. Untuk akun redaksi, admin membuat akun langsung (sudah terkonfirmasi). Untuk pembaca yang mendaftar sendiri, atur *Confirm email* sesuai selera; tambahkan URL aplikasi pembaca ke **Authentication → URL Configuration → Redirect URLs** (`https://<reader-domain>/auth/callback`).
-5. Catat dari **Project Settings → API**: `Project URL`, `anon public key`, dan `service_role key` (rahasia — hanya untuk aplikasi admin).
+5. Catat dari **Project Settings → API Keys** (dan **Data API** untuk URL):
+   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
+   - **Publishable key** (`sb_publishable_…`) → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - **Secret key** (`sb_secret_…`) → `SUPABASE_SERVICE_ROLE_KEY` — rahasia, **hanya** untuk aplikasi admin.
+   - Project lama yang masih memakai kunci JWT: pakai `anon` dan `service_role` dari tab *Legacy API Keys* — keduanya juga berfungsi.
 
 ## 2. Jalankan lokal
 
@@ -79,6 +92,13 @@ Block       { type: lead|article|brief|image|quote|ad|cover|toc|text|feature|gal
 ```
 
 Saat terbit, blok yang menautkan naskah dibekukan (`sourceArticleId`) ke `edition_snapshots.data`; `editions.cover_data` menyimpan sampul (1 halaman) untuk thumbnail publik.
+
+## Pengujian yang sudah dilakukan
+
+- `next build` ketiga aplikasi + typecheck paket bersama.
+- Migrasi dijalankan dua kali (idempoten) + seed, pada Postgres 16 dengan tiruan skema `auth`/`storage` Supabase, terhubung sebagai `authenticator` seperti PostgREST.
+- Skenario RLS: penyusup tidak bisa menjadikan dirinya superadmin; klaim superadmin pertama berhasil sekali; penata letak tidak bisa menerbitkan; wartawan tidak bisa menandai naskah Terbit atau membuat edisi; pembaca/anon hanya melihat meta edisi terbit, isi terkunci sampai langganan aktif, dan terkunci lagi saat edisi ditarik; unggahan storage hanya ke folder penerbit sendiri.
+- Uji peramban (headless): kios, flipbook koran & majalah (tombol + seret), mode baca, editor tata letak, login admin, tampilan ponsel — tanpa error konsol.
 
 ## Peta jalan
 
