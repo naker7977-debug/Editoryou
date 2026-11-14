@@ -1,12 +1,13 @@
 import { requireSuperadmin } from '@/lib/guard';
 import { Shell, H1 } from '@/components/Shell';
+import { Flash } from '@/components/Flash';
 import { activateSubscription, cancelSubscription, createReader } from '@/lib/actions';
 import { formatDate, formatIDR, type Plan, type Profile, type Subscription } from '@press/db';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Readers({ searchParams }: { searchParams: Promise<{ q?: string; u?: string }> }) {
-  const { q, u } = await searchParams;
+export default async function Readers({ searchParams }: { searchParams: Promise<{ q?: string; u?: string; ok?: string; err?: string }> }) {
+  const { q, u, ok, err } = await searchParams;
   const { profile, admin } = await requireSuperadmin();
   let pq = admin.from('profiles').select('*').order('created_at', { ascending: false }).limit(200);
   if (q) pq = pq.or(`full_name.ilike.%${q}%,email.ilike.%${q}%`);
@@ -22,6 +23,7 @@ export default async function Readers({ searchParams }: { searchParams: Promise<
   return (
     <Shell who={profile.email ?? ''}>
       <H1 kicker="Pembaca" title="Pembaca & langganan" right={<form method="get"><input className="input" name="q" placeholder="Cari nama / surel…" defaultValue={q ?? ''} style={{ width: 240 }} /></form>} />
+      <Flash ok={ok} err={err} />
       <div className="grid lg:grid-cols-[1fr_400px] gap-6 items-start">
         <div className="card overflow-hidden">
           <table className="tbl">
@@ -56,7 +58,7 @@ export default async function Readers({ searchParams }: { searchParams: Promise<
             <h2 className="font-display text-lg mb-1">Daftarkan pembaca manual</h2>
             <p className="text-xs text-[var(--muted)] mb-3">Untuk pelanggan yang mendaftar lewat telepon/kantor.</p>
             <div className="field"><label>Nama</label><input type="text" name="full_name" required /></div>
-            <div className="field"><label>Surel</label><input type="text" name="email" required /></div>
+            <div className="field"><label>Surel</label><input type="email" name="email" required placeholder="nama@sekolah.sch.id" /></div>
             <div className="field"><label>Kata sandi</label><input type="text" name="password" required placeholder="min. 6 karakter" /></div>
             <button className="btn w-full justify-center">Buat akun pembaca</button>
           </form>

@@ -4,13 +4,19 @@ import { createClient } from '@press/db/server';
 import { ARTICLE_STATUS_LABEL, EDITION_STATUS_LABEL, formatDate, type Article, type Edition } from '@press/db';
 import { createArticle, createEdition } from '@/lib/actions';
 import { canLayout } from '@press/db';
+import { TeenDashboard } from '@/components/TeenDashboard';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Overview({ params }: { params: Promise<{ pub: string }> }) {
   const { pub: slug } = await params;
-  const { pub, role } = await requirePub(slug);
+  const { pub, role, userId } = await requirePub(slug);
   const supabase = await createClient();
+  if (pub.type === 'magazine') {
+    const { data: me } = await supabase.from('profiles').select('full_name,email').eq('id', userId).maybeSingle();
+    const firstName = (me?.full_name || me?.email?.split('@')[0] || 'Redaksi').split(' ')[0];
+    return <TeenDashboard pub={pub} role={role} userId={userId} firstName={firstName} />;
+  }
   const [{ data: articles }, { data: editions }, { count: mediaCount }, { count: memberCount }] = await Promise.all([
     supabase.from('articles').select('id,title,status,updated_at,byline,profiles(full_name)').eq('publication_id', pub.id).order('updated_at', { ascending: false }).limit(8),
     supabase.from('editions').select('id,title,number,edition_date,status,access,published_at,updated_at').eq('publication_id', pub.id).order('edition_date', { ascending: false }).limit(6),

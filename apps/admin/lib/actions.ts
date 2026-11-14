@@ -3,7 +3,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireSuperadmin } from './guard';
 import { createClient } from '@press/db/server';
-import type { MemberRole } from '@press/db';
+import { ROLE_LABEL, type MemberRole } from '@press/db';
+import { SERVICE_KEY_HINT } from '@press/db/admin';
 
 const s = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
 
@@ -42,7 +43,9 @@ export async function deletePublication(id: string) {
 
 /* ---------- akun & anggota ---------- */
 async function findOrCreateUser(admin: Awaited<ReturnType<typeof requireSuperadmin>>['admin'], email: string, fullName: string, password?: string) {
-  const { data: existing } = await admin.from('profiles').select('id').eq('email', email).maybeSingle();
+  if (!email.includes('@')) throw new Error('invalid format');
+  const { data: existing, error: findErr } = await admin.from('profiles').select('id').eq('email', email).maybeSingle();
+  if (findErr) throw new Error(findErr.message);
   if (existing) return existing.id as string;
   if (!password || password.length < 6) throw new Error('Akun belum ada — isi kata sandi (min. 6 karakter) untuk membuatnya.');
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName } });
@@ -52,15 +55,30 @@ async function findOrCreateUser(admin: Awaited<ReturnType<typeof requireSuperadm
   return data.user.id;
 }
 
+/** Ubah pesan teknis Supabase menjadi kalimat yang bisa ditindaklanjuti. */
+function friendly(e: unknown) {
+  const m = (e as Error)?.message ?? String(e);
+  if (/valid Bearer token|Invalid API key|User not allowed/i.test(m)) return SERVICE_KEY_HINT;
+  if (/already (been )?registered|already exists/i.test(m)) return 'Surel ini sudah terdaftar. Kosongkan kata sandi untuk menugaskan akun yang sudah ada.';
+  if (/invalid format|validate email/i.test(m)) return 'Format surel tidak valid (contoh: nama@sekolah.sch.id).';
+  if (/password/i.test(m)) return 'Kata sandi terlalu lemah — minimal 6 karakter.';
+  return m;
+}
+const withMsg = (path: string, key: 'ok' | 'err', msg: string) => `${path}${path.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(msg)}`;
+
 export async function addMember(form: FormData) {
   const { admin } = await requireSuperadmin();
   const email = s(form, 'email').toLowerCase(), name = s(form, 'full_name'), password = s(form, 'password');
   const publicationId = s(form, 'publication_id'), role = (s(form, 'role') || 'writer') as MemberRole;
   const back = s(form, 'back') || '/anggota';
-  const userId = await findOrCreateUser(admin, email, name, password);
-  const { error } = await admin.from('publication_members').upsert({ publication_id: publicationId, user_id: userId, role }, { onConflict: 'publication_id,user_id' });
-  if (error) throw new Error(error.message);
-  revalidatePath(back); redirect(back);
+  let errMsg = '';
+  try {
+    const userId = await findOrCreateUser(admin, email, name, password);
+    const { error } = await admin.from('publication_members').upsert({ publication_id: publicationId, user_id: userId, role }, { onConflict: 'publication_id,user_id' });
+    if (error) throw new Error(error.message);
+  } catch (e) { errMsg = friendly(e); }
+  revalidatePath(back);
+  redirect(errMsg ? withMsg(back, 'err', errMsg) : withMsg(back, 'ok', `${name || email} ditambahkan sebagai ${ROLE_LABEL[role]}.`));
 }
 export async function updateMemberRole(memberId: string, role: MemberRole, back: string) {
   const { admin } = await requireSuperadmin();
@@ -91,8 +109,11 @@ export async function setGlobalRole(userId: string, role: 'user' | 'superadmin')
 }
 export async function createReader(form: FormData) {
   const { admin } = await requireSuperadmin();
-  await findOrCreateUser(admin, s(form, 'email').toLowerCase(), s(form, 'full_name'), s(form, 'password'));
-  revalidatePath('/pembaca'); redirect('/pembaca');
+  let errMsg = '';
+  try { await findOrCreateUser(admin, s(form, 'email').toLowerCase(), s(form, 'full_name'), s(form, 'password')); }
+  catch (e) { errMsg = friendly(e); }
+  revalidatePath('/pembaca');
+  redirect(errMsg ? withMsg('/pembaca', 'err', errMsg) : withMsg('/pembaca', 'ok', 'Akun pembaca dibuat.'));
 }
 
 /* ---------- paket & langganan ---------- */

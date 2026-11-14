@@ -40,7 +40,7 @@ a:hover .cover{transform:translateY(-4px);border-color:var(--gold)}
 .side-link.on{background:#2a231a;color:var(--text);border:1px solid #3d3326}
 .field{display:flex;flex-direction:column;gap:.3rem;margin-bottom:.6rem}
 .field label{font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
-.field input[type=text],.field input[type=date],.field input[type=number],.field select,.field textarea{background:#110e0b;border:1px solid var(--line);color:var(--text);padding:.45rem .6rem;border-radius:.4rem;outline:none;width:100%;font-size:.82rem}
+.field input[type=text],.field input[type=email],.field input[type=date],.field input[type=number],.field select,.field textarea{background:#110e0b;border:1px solid var(--line);color:var(--text);padding:.45rem .6rem;border-radius:.4rem;outline:none;width:100%;font-size:.82rem}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold)}
 .field textarea{min-height:110px;resize:vertical;line-height:1.45;font-family:'Libre Baskerville',Georgia,serif;font-size:.8rem}
 .sect{padding:.8rem .9rem;border-bottom:1px solid var(--line)}

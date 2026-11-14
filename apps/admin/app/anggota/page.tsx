@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { requireSuperadmin } from '@/lib/guard';
 import { Shell, H1 } from '@/components/Shell';
+import { Flash } from '@/components/Flash';
 import { addMember, resetPassword, setGlobalRole } from '@/lib/actions';
 import { ROLE_LABEL, type MemberRole, type Profile, type Publication, type PublicationMember } from '@press/db';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Accounts({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
+export default async function Accounts({ searchParams }: { searchParams: Promise<{ q?: string; ok?: string; err?: string }> }) {
+  const { q, ok, err } = await searchParams;
   const { profile, admin } = await requireSuperadmin();
   const [{ data: members }, { data: pubs }, { data: supers }] = await Promise.all([
     admin.from('publication_members').select('*, profiles(*), publications(id,name,slug,type)').order('created_at', { ascending: false }),
@@ -22,6 +23,7 @@ export default async function Accounts({ searchParams }: { searchParams: Promise
   return (
     <Shell who={profile.email ?? ''}>
       <H1 kicker="Akun redaksi" title="Editor, wartawan & penulis" right={<form method="get"><input className="input" name="q" placeholder="Cari nama / surel…" defaultValue={q ?? ''} style={{ width: 240 }} /></form>} />
+      <Flash ok={ok} err={err} />
       <div className="grid lg:grid-cols-[1fr_380px] gap-6 items-start">
         <div className="space-y-6">
           <div className="card overflow-hidden">
@@ -49,7 +51,7 @@ export default async function Accounts({ searchParams }: { searchParams: Promise
           <h2 className="font-display text-lg mb-1">Akun redaksi baru</h2>
           <p className="text-xs text-[var(--muted)] mb-3">Akun langsung aktif (tanpa konfirmasi surel). Sampaikan surel & kata sandi kepada yang bersangkutan; mereka masuk lewat Studio Redaksi.</p>
           <div className="field"><label>Nama lengkap</label><input type="text" name="full_name" required /></div>
-          <div className="field"><label>Surel</label><input type="text" name="email" required /></div>
+          <div className="field"><label>Surel</label><input type="email" name="email" required placeholder="nama@sekolah.sch.id" /></div>
           <div className="field"><label>Kata sandi</label><input type="text" name="password" placeholder="min. 6 karakter (kosongkan bila akun sudah ada)" /></div>
           <div className="field"><label>Penerbit</label><select name="publication_id" required>{((pubs ?? []) as Publication[]).map(p => <option key={p.id} value={p.id}>{p.name} ({p.type === 'magazine' ? 'majalah' : 'koran'})</option>)}</select></div>
           <div className="field"><label>Peran</label><select name="role" defaultValue="journalist">{roles.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></div>

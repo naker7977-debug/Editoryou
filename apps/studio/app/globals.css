@@ -67,3 +67,92 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.85rem}
 table.tbl th{text-align:left;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:.5rem .6rem;border-bottom:1px solid var(--line)}
 table.tbl td{padding:.6rem .6rem;border-bottom:1px solid var(--line);vertical-align:middle}
 table.tbl tr:hover td{background:#1d1814}
+
+/* =========================================================
+   Tema "teen" — redaksi majalah yang dikelola pelajar.
+   Hanya aktif di dalam .teen (penerbit bertipe majalah).
+   ========================================================= */
+.teen{
+  --bg:#0a0d1f; --panel:rgba(255,255,255,.045); --line:rgba(255,255,255,.09); --text:#eef0ff; --muted:#8f97c6;
+  --gold:#ff5cc8; --accent:#7c5cff; --cyan:#22d3ee; --lime:#a3e635; --orange:#ffb547;
+  --grad:linear-gradient(100deg,#7c5cff 0%,#ff5cc8 100%);
+  font-family:'Plus Jakarta Sans','Manrope',system-ui,sans-serif;
+  background:
+    radial-gradient(900px 600px at 8% -10%, rgba(124,92,255,.28), transparent 60%),
+    radial-gradient(800px 520px at 100% 0%, rgba(34,211,238,.16), transparent 60%),
+    radial-gradient(700px 600px at 60% 120%, rgba(255,92,200,.16), transparent 60%),
+    #0a0d1f;
+  background-attachment:fixed;
+  color:var(--text);
+}
+.teen .font-display{font-family:'Plus Jakarta Sans','Manrope',sans-serif;font-weight:800;letter-spacing:-.02em}
+.teen .card{background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.025));border:1px solid var(--line);border-radius:1.25rem;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 20px 50px -20px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06)}
+.teen .btn{border-radius:.8rem;background:rgba(255,255,255,.06);border-color:var(--line)}
+.teen .btn:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.18)}
+.teen .btn.gold{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 8px 24px -8px rgba(255,92,200,.65)}
+.teen .btn.gold:hover{filter:brightness(1.08);background:var(--grad)}
+.teen .input,.teen .field input[type=text],.teen .field input[type=date],.teen .field input[type=number],.teen .field select,.teen .field textarea{background:rgba(6,8,24,.55);border-color:var(--line);border-radius:.7rem}
+.teen .input:focus,.teen .field input:focus,.teen .field select:focus,.teen .field textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,92,200,.18)}
+.teen .badge{border-radius:999px;letter-spacing:.04em;text-transform:none;font-size:.7rem;font-weight:600;background:rgba(124,92,255,.18);color:#d6ccff;border-color:rgba(124,92,255,.35)}
+.teen .badge.green{background:rgba(163,230,53,.14);color:#d4f7a1;border-color:rgba(163,230,53,.35)}
+.teen .badge.red{background:rgba(255,92,120,.15);color:#ffc0cc;border-color:rgba(255,92,120,.35)}
+.teen table.tbl tr:hover td{background:rgba(255,255,255,.035)}
+.teen .modal{background:#12153a;border-color:var(--line);border-radius:1.25rem}
+.teen .modal-bg{background:rgba(5,6,20,.7)}
+.teen .toast{background:#181c47;border-color:var(--line);border-radius:.8rem}
+.teen .item{background:rgba(255,255,255,.04);border-radius:.6rem}
+.teen .item:hover{background:rgba(255,255,255,.08)}
+.teen .item.on{background:rgba(255,92,200,.12)}
+.teen .sect h4{color:var(--gold)}
+.teen .warnbox{border-radius:.7rem}
+
+/* sidebar kaca */
+.teen-aside{margin:14px 0 14px 14px;border:1px solid var(--line);border-radius:1.4rem;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 30px 60px -30px rgba(0,0,0,.7);position:sticky;top:14px;height:calc(100vh - 28px)}
+.teen .side-link{border-radius:.85rem;padding:.65rem .8rem;font-weight:600;color:#aab1db;border:1px solid transparent;position:relative}
+.teen .side-link:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.teen .side-link.on{background:linear-gradient(100deg,rgba(124,92,255,.35),rgba(255,92,200,.22));color:#fff;border-color:rgba(255,255,255,.14);box-shadow:0 0 0 1px rgba(255,92,200,.15),0 10px 30px -10px rgba(255,92,200,.55)}
+.side-link .dot{display:none}
+.teen .side-link .dot{display:block;margin-left:auto;width:7px;height:7px;border-radius:50%;box-shadow:0 0 10px currentColor}
+.teen-logo{width:38px;height:38px;border-radius:.8rem;background:var(--grad);display:grid;place-items:center;font-weight:800;font-size:1.1rem;color:#fff;box-shadow:0 8px 22px -6px rgba(255,92,200,.7)}
+
+/* dashboard */
+.t-kicker{font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.t-head{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.15rem .4rem}
+.t-head h2{font-weight:800;font-size:1rem;letter-spacing:-.01em}
+.t-head .more{color:var(--muted);font-size:.75rem;font-weight:600}
+.t-head .more:hover{color:var(--text)}
+.t-tile{border-radius:1rem;border:1px solid var(--line);background:rgba(6,8,24,.35);padding:.8rem .9rem}
+.t-tile .v{font-size:1.6rem;font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.t-tile .l{font-size:.7rem;color:var(--muted);font-weight:600}
+.t-bar{height:7px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
+.t-bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--cyan),#7c5cff)}
+.t-thumb{position:relative;border-radius:.9rem;overflow:hidden;border:1px solid var(--line);background:rgba(6,8,24,.5)}
+.t-thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
+.t-thumb:hover img{transform:scale(1.05)}
+.t-thumb .cap{position:absolute;inset:auto 0 0 0;padding:.45rem .55rem;font-size:.7rem;font-weight:700;background:linear-gradient(transparent,rgba(5,6,20,.85))}
+.t-drop{border:1.5px dashed rgba(255,255,255,.22);border-radius:.9rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;color:var(--muted);font-size:.75rem;font-weight:600;cursor:pointer;transition:.2s;text-align:center;padding:.6rem}
+.t-drop:hover,.t-drop.over{border-color:var(--gold);color:var(--text);background:rgba(255,92,200,.07)}
+.t-avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:.75rem;color:#fff;border:2px solid #0f1330;flex:none}
+.t-col{border-radius:1rem;background:rgba(6,8,24,.35);border:1px solid var(--line);padding:.6rem;min-width:0;display:flex;flex-direction:column;gap:.5rem}
+.t-col h3{display:flex;align-items:center;justify-content:space-between;font-size:.78rem;font-weight:800;padding:.15rem .25rem}
+.t-col h3 .n{font-size:.68rem;color:var(--muted);background:rgba(255,255,255,.07);padding:.05rem .45rem;border-radius:99px}
+.t-card{display:block;border-radius:.85rem;padding:.65rem .7rem;color:#fff;position:relative;overflow:hidden;box-shadow:0 10px 24px -14px rgba(0,0,0,.8);transition:transform .15s}
+.t-card:hover{transform:translateY(-2px)}
+.t-card .tag{display:inline-block;font-size:.62rem;font-weight:800;background:rgba(255,255,255,.22);padding:.1rem .45rem;border-radius:99px;margin-bottom:.35rem}
+.t-card .ttl{font-size:.8rem;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.t-card .who{display:flex;align-items:center;gap:.35rem;margin-top:.45rem;font-size:.65rem;opacity:.9}
+.t-card .who .t-avatar{width:20px;height:20px;font-size:.55rem;border-width:1.5px;border-color:rgba(255,255,255,.5)}
+.g-draft{background:linear-gradient(135deg,#6d5dfc,#3b82f6)}
+.g-review{background:linear-gradient(135deg,#ff5cc8,#ff8a4c)}
+.g-ready{background:linear-gradient(135deg,#14b8a6,#22d3ee)}
+.g-published{background:linear-gradient(135deg,#65a30d,#a3e635)}
+.t-add{font-size:.75rem;font-weight:700;color:var(--muted);padding:.35rem .4rem;border-radius:.6rem;text-align:left}
+.t-add:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.t-editor{border-radius:1rem;border:1px solid var(--line);background:rgba(6,8,24,.45);overflow:hidden}
+.t-editor .bar{display:flex;gap:.9rem;padding:.55rem .8rem;border-bottom:1px solid var(--line);color:var(--muted);font-size:.8rem;font-weight:700}
+.t-editor .doc{padding:1rem 1.1rem 1.2rem}
+.t-editor .doc h3{font-size:1.45rem;font-weight:800;letter-spacing:-.02em;line-height:1.2}
+.t-editor .doc p{color:#b8bfe6;font-size:.85rem;line-height:1.6;margin-top:.5rem;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.t-caret{display:inline-block;width:2px;height:1.1em;background:var(--gold);vertical-align:-3px;margin-left:2px;animation:t-blink 1s steps(2) infinite}
+@keyframes t-blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.t-caret{animation:none}.t-card,.t-thumb img{transition:none}}

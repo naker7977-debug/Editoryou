@@ -4,11 +4,13 @@ import { Shell, H1 } from '@/components/Shell';
 import { addMember, deletePublication, removeMember, updateMemberRole, updatePublication } from '@/lib/actions';
 import { ROLE_LABEL, formatDate, type MemberRole, type Publication, type PublicationMember } from '@press/db';
 import { RoleSelect } from '@/components/RoleSelect';
+import { Flash } from '@/components/Flash';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PublisherDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function PublisherDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   const { id } = await params;
+  const { ok, err } = await searchParams;
   const { profile, admin } = await requireSuperadmin();
   const [{ data: pub }, { data: members }] = await Promise.all([
     admin.from('publications').select('*').eq('id', id).maybeSingle(),
@@ -23,6 +25,7 @@ export default async function PublisherDetail({ params }: { params: Promise<{ id
     <Shell who={profile.email ?? ''}>
       <H1 kicker="Penerbit" title={p.name} right={<div className="flex gap-2">{studio && <a className="btn sm" href={`${studio}/p/${p.slug}`} target="_blank" rel="noreferrer">Buka di Studio ↗</a>}
         <form action={deletePublication.bind(null, id)}><button className="btn sm" style={{ color: '#f1b1a6' }}>Hapus penerbit</button></form></div>} />
+      <Flash ok={ok} err={err} />
       <div className="grid lg:grid-cols-2 gap-6 items-start">
         <form action={updatePublication.bind(null, id)} className="card p-5">
           <h2 className="font-display text-lg mb-3">Identitas</h2>
@@ -68,7 +71,7 @@ export default async function PublisherDetail({ params }: { params: Promise<{ id
             <p className="text-xs text-[var(--muted)] mb-3">Bila surel sudah terdaftar, akun yang ada akan ditugaskan. Bila belum, isi kata sandi untuk membuat akun baru.</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="field"><label>Nama lengkap</label><input type="text" name="full_name" required /></div>
-              <div className="field"><label>Surel</label><input type="text" name="email" required /></div>
+              <div className="field"><label>Surel</label><input type="email" name="email" required placeholder="nama@sekolah.sch.id" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="field"><label>Kata sandi (akun baru)</label><input type="text" name="password" placeholder="min. 6 karakter" /></div>

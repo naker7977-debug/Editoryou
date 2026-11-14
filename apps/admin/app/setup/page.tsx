@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getProfile } from '@press/db/server';
-import { createAdminClient } from '@press/db/admin';
+import { createAdminClient, serviceKeyKind, SERVICE_KEY_HINT } from '@press/db/admin';
 import { claimSuperadmin } from '@/lib/actions';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,12 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
   let hasSuper = true, svcOk = true, svcMsg = '';
   try { const admin = createAdminClient(); const { count, error } = await admin.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'superadmin'); if (error) throw error; hasSuper = (count ?? 0) > 0; }
   catch (e) { svcOk = false; svcMsg = (e as Error).message; }
+  const kind = serviceKeyKind();
+  const KIND_LABEL: Record<string, string> = { secret: 'Secret key (sb_secret_) ✓', service_role: 'service_role (JWT lama) ✓', publishable: 'SALAH — publishable key', anon: 'SALAH — anon key', missing: 'kosong', unknown: 'format tidak dikenal' };
+  const kindOk = kind === 'secret' || kind === 'service_role';
+  // uji juga API Auth admin (dipakai saat membuat akun redaksi)
+  let authOk = false;
+  if (svcOk && kindOk) { try { const { error } = await createAdminClient().auth.admin.listUsers({ page: 1, perPage: 1 }); authOk = !error; if (error) svcMsg = error.message; } catch (e) { svcMsg = (e as Error).message; } }
   const checks = [
     ['NEXT_PUBLIC_SUPABASE_URL', !!process.env.NEXT_PUBLIC_SUPABASE_URL],
     ['NEXT_PUBLIC_SUPABASE_ANON_KEY', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY],
@@ -26,9 +32,12 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
         <h1 className="font-display text-3xl mt-1 mb-4">Status platform</h1>
         <ul className="text-sm space-y-1 mb-5">
           {checks.map(([k, ok]) => <li key={k} className="flex justify-between"><code className="text-[var(--muted)]">{k}</code><span className={ok ? 'text-[#bfe5b9]' : 'text-[#f1b1a6]'}>{ok ? 'terisi' : 'kosong'}</span></li>)}
+          <li className="flex justify-between"><span className="text-[var(--muted)]">Jenis kunci service role</span><span className={kindOk ? 'text-[#bfe5b9]' : 'text-[#f1b1a6]'}>{KIND_LABEL[kind]}</span></li>
+          <li className="flex justify-between"><span className="text-[var(--muted)]">API pembuatan akun</span><span className={authOk ? 'text-[#bfe5b9]' : 'text-[#f1b1a6]'}>{authOk ? 'OK' : 'gagal'}</span></li>
           <li className="flex justify-between"><span className="text-[var(--muted)]">Koneksi service role</span><span className={svcOk ? 'text-[#bfe5b9]' : 'text-[#f1b1a6]'}>{svcOk ? 'OK' : 'gagal'}</span></li>
         </ul>
-        {!svcOk && <div className="warnbox mb-4">{svcMsg}</div>}
+        {!kindOk && kind !== 'missing' && <div className="warnbox mb-4">{SERVICE_KEY_HINT}</div>}
+        {kindOk && (!svcOk || !authOk) && <div className="warnbox mb-4">{svcMsg}</div>}
         <div className="text-sm text-[var(--muted)] mb-4">Masuk sebagai <b className="text-[var(--text)]">{user.email}</b> — peran: <b className="text-[var(--text)]">{profile?.role ?? 'user'}</b>.</div>
         {profile?.role === 'superadmin' ? (
           <a href="/" className="btn gold">Buka panel admin →</a>
