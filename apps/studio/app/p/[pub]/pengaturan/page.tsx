@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requirePub } from '@/lib/pub';
-import { canManageMembers } from '@press/db';
+import { canManageMembers, layoutOpen } from '@press/db';
 import { updatePublicationSettings } from '@/lib/actions';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +29,10 @@ export default async function Settings({ params }: { params: Promise<{ pub: stri
           <div className="field"><label>Kertas bawaan</label><select name="tone" defaultValue={s.tone ?? (pub.type === 'magazine' ? 'bright' : 'ivory')}><option value="ivory">Gading hangat</option><option value="aged">Kertas tua</option><option value="sepia">Sepia</option><option value="bright">Putih tulang</option></select></div>
           <div className="field"><label>Warna aksen</label><input type="color" name="accent" defaultValue={s.accent ?? '#8b1e1e'} className="h-9 w-full bg-transparent" /></div>
         </div>
+        <label className="flex items-start gap-3 card p-4 mb-4 cursor-pointer">
+          <input type="checkbox" name="openLayout" defaultChecked={layoutOpen(pub)} className="mt-1 accent-[var(--gold)]" />
+          <span className="text-sm"><b>Semua anggota tim boleh menata halaman & membuat edisi</b><br /><span className="text-[var(--muted)] text-xs">Cocok untuk tim kecil. Matikan bila tim sudah besar — penataan kembali khusus Pemimpin Redaksi, Redaktur, dan Penata Letak. Menerbitkan & menghapus edisi tetap khusus redaktur ke atas.</span></span>
+        </label>
         <p className="text-xs text-[var(--muted)] mb-4">Nilai ini menjadi bawaan untuk edisi baru. Nama & slug penerbit diubah oleh admin platform.</p>
         <button className="btn gold">Simpan pengaturan</button>
       </form>

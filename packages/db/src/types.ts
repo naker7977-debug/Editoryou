@@ -24,6 +24,8 @@ export interface PublicationSettings {
   price?: string;
   motto?: string;
   frequency?: string;
+  /** Semua anggota boleh menata halaman & membuat edisi (bawaan: ya untuk majalah). */
+  openLayout?: boolean;
 }
 
 export interface Publication {
@@ -148,6 +150,10 @@ type RoleLike = MemberRole | 'superadmin' | null | undefined;
 /** Boleh menata halaman edisi. */
 export const canLayout = (role: RoleLike) => role === 'superadmin' || (!!role && ['chief', 'editor', 'designer'].includes(role));
 /** Boleh menerbitkan edisi & menyunting semua naskah. */
+/** Tata letak terbuka untuk semua anggota? (bawaan: majalah ya, koran tidak) */
+export const layoutOpen = (pub: { type: PublicationKind; settings?: PublicationSettings | null }) => pub.settings?.openLayout ?? pub.type === 'magazine';
+/** Boleh menata halaman di penerbit ini: redaktur/penata letak, atau semua anggota bila tata letak terbuka. */
+export const canLayoutIn = (pub: { type: PublicationKind; settings?: PublicationSettings | null }, role: RoleLike) => canLayout(role) || (!!role && layoutOpen(pub));
 export const canPublish = (role: RoleLike) => role === 'superadmin' || (!!role && ['chief', 'editor'].includes(role));
 export const canReview = canPublish;
 /** Boleh mengubah pengaturan penerbit. */

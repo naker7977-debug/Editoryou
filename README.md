@@ -38,7 +38,7 @@ Hanya redaktur ke atas yang dapat menandai naskah *Terbit*/*Arsip*. Peran global
 ## 1. Siapkan Supabase (akun baru Anda)
 
 1. Buat project di <https://supabase.com> (region Singapore paling dekat).
-2. Buka **SQL Editor** → *New query* → tempel seluruh isi `supabase/migrations/0001_init.sql` → **Run**. (Aman dijalankan ulang.)
+2. Buka **SQL Editor** → *New query* → tempel seluruh isi `supabase/migrations/0001_init.sql` → **Run**, lalu ulangi untuk `0002_open_layout.sql`. (Keduanya aman dijalankan ulang.)
 3. Opsional: jalankan `supabase/seed.sql` untuk dua penerbit contoh + paket.
 4. **Authentication → Providers → Email**: aktif. Untuk akun redaksi, admin membuat akun langsung (sudah terkonfirmasi). Untuk pembaca yang mendaftar sendiri, atur *Confirm email* sesuai selera; tambahkan URL aplikasi pembaca ke **Authentication → URL Configuration → Redirect URLs** (`https://<reader-domain>/auth/callback`).
 5. Catat dari **Project Settings → API Keys** (dan **Data API** untuk URL):
@@ -82,12 +82,21 @@ Langkah: *Add New → Project → Import* repo → **Root Directory** pilih fold
 
 Aplikasi pembaca responsif (satu halaman per lembar di layar sempit) dan menyertakan *web manifest* (bisa "Tambahkan ke layar utama"). Untuk aplikasi Android sungguhan, bungkus URL pembaca dengan **Trusted Web Activity** (Bubblewrap) atau **Capacitor WebView** — setiap edisi yang diterbitkan langsung muncul tanpa memperbarui aplikasi.
 
+## Editor majalah "Lego"
+
+Penerbit bertipe majalah memakai Studio bertema remaja dan editor tata letak bebas:
+
+- **Templat bertahap:** edisi baru berisi 4 lembar inti terkunci — Sampul → Daftar Isi → Salam Redaksi → Liputan Utama — lalu halaman kreatif bebas (tambah lewat *＋ Lembar kreatif*).
+- **Keping (blok)** diseret dari tab *Keping* ke halaman, dipindah dengan menyeret, diubah ukurannya dari sudut kanan-bawah, bisa ditumpuk (*Ke depan / Ke belakang*). Papan kunci: panah = geser, Shift+panah = ukuran, Del = hapus, Ctrl+D = gandakan.
+- **Foto** diseret dari tab *Foto* ke ruang kosong (blok foto baru) atau ke blok yang ada (ganti gambar).
+- **Hak tata letak:** bila *Pengaturan → Semua anggota tim boleh menata halaman* aktif (bawaan untuk majalah), semua anggota bisa membuat & menata edisi. Menerbitkan dan menghapus edisi tetap khusus redaktur ke atas (ditegakkan oleh RLS di `0002_open_layout.sql`).
+
 ## Struktur data edisi (ringkas)
 
 ```
 EditionData { kind, masthead{name,number,date,…}, theme{accent,tone,mastheadStyle}, pages[] }
-Page        { section, dark?, bg?, blocks[] }
-Block       { type: lead|article|brief|image|quote|ad|cover|toc|text|feature|gallery, w(1-12), h(1-12),
+Page        { section, stage?: cover|toc|editorial|main|free, locked?, dark?, bg?, blocks[] }
+Block       { type: lead|article|brief|image|quote|ad|cover|toc|text|feature|gallery, w(1-12), h(1-12), x?/y? (posisi bebas 0-11),
               cols, scale, dropcap, articleId?, kicker, title, deck, byline, body, img, images[], cap, imgH, invert }
 ```
 

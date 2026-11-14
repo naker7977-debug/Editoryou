@@ -5,9 +5,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createClient } from '@press/db/browser';
 import { ARTICLE_STATUS_LABEL, type Article, type Edition, type EditionAccess, type EditionStatus, type Publication } from '@press/db';
 import {
-  BLOCK_TYPES, PAGE_PRESETS, PageView, markOverflow, newBlock, newPage, normalizeEdition, freezeEdition, words, uid, imgSrc,
+  BLOCK_TYPES, PAGE_PRESETS, PageView, markOverflow, newBlock, newPage, normalizeEdition, freezeEdition, words, uid, imgSrc, autoPlace, firstFreeSpot,
   type ArticleMap, type Block, type BlockType, type EditionData, type Page,
 } from '@press/ui';
+import { BlockPalette, CanvasOverlay, IMAGE_TYPES, PhotoDrawer, StageRail, type Rect } from './LegoParts';
 import { MediaPicker } from './MediaPicker';
 import { Toast, useToast } from './Toast';
 import { deleteEdition } from '@/lib/actions';
@@ -27,6 +28,7 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
   const [picker, setPicker] = useState<null | ((m: { url: string; path?: string | null }) => void)>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<'lembar' | 'tambah' | 'foto' | 'edisi'>('lembar');
   const canvasRef = useRef<HTMLDivElement>(null);
   const pgWrapRef = useRef<HTMLDivElement>(null);
   const firstRender = useRef(true);
@@ -81,15 +83,83 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
   useEffect(() => { window.addEventListener('resize', fit); const f = (document as Document & { fonts?: FontFaceSet }).fonts; f?.ready.then(() => { const pg = pgWrapRef.current?.querySelector<HTMLElement>('.pg'); if (pg) setOverflow(markOverflow(pg)); }).catch(() => {}); return () => window.removeEventListener('resize', fit); }, [fit]);
 
   /* ---------- aksi halaman & blok ---------- */
-  const addPage = (presetId: string) => { const pr = PAGE_PRESETS.find(p => p.id === presetId); const np = pr ? pr.make() : newPage(); update(d => { d.pages.splice(sel.page + 1, 0, np); }); setSel({ page: sel.page + 1, block: null }); };
-  const movePage = (i: number, dir: -1 | 1) => { const j = i + dir; if (j < 0 || j >= data.pages.length) return; update(d => { [d.pages[i], d.pages[j]] = [d.pages[j], d.pages[i]]; }); setSel({ page: j, block: null }); };
-  const removePage = (i: number) => { if (data.pages.length <= 1) { toast.show('Minimal satu halaman', true); return; } if (!confirm(`Hapus halaman "${data.pages[i].section}" (${data.pages[i].blocks.length} blok)?`)) return; update(d => { d.pages.splice(i, 1); }); setSel({ page: clampN(i, 0, data.pages.length - 2), block: null }); };
-  const addBlock = (t: BlockType) => { const b = newBlock(t); updatePage(p => p.blocks.push(b)); setSel({ page: sel.page, block: page.blocks.length }); };
+  const lastLocked = data.pages.reduce((a, p, i) => (p.locked ? i : a), -1);
+  const addPage = (presetId: string) => {
+    const pr = PAGE_PRESETS.find(p => p.id === presetId); const np = pr ? pr.make() : newPage();
+    if (mag) { np.stage = np.stage ?? 'free'; np.locked = false; np.blocks = autoPlace(np.blocks); }
+    const at = Math.max(sel.page, lastLocked) + 1;
+    update(d => { d.pages.splice(at, 0, np); }); setSel({ page: at, block: null });
+  };
+  const movePage = (i: number, dir: -1 | 1) => { const j = i + dir; if (j < 0 || j >= data.pages.length) return; if (data.pages[i].locked || data.pages[j].locked) { toast.show('Lembar inti templat tidak bisa dipindah', true); return; } update(d => { [d.pages[i], d.pages[j]] = [d.pages[j], d.pages[i]]; }); setSel({ page: j, block: null }); };
+  const removePage = (i: number) => { if (data.pages[i]?.locked) { toast.show('Lembar inti templat tidak bisa dihapus — kosongkan isinya saja bila perlu', true); return; } if (data.pages.length <= 1) { toast.show('Minimal satu halaman', true); return; } if (!confirm(`Hapus halaman "${data.pages[i].section}" (${data.pages[i].blocks.length} blok)?`)) return; update(d => { d.pages.splice(i, 1); }); setSel({ page: clampN(i, 0, data.pages.length - 2), block: null }); };
+  const addBlock = (t: BlockType, cell?: { x: number; y: number }, img?: { url: string; path?: string | null }) => {
+    if (!mag) { const b = newBlock(t); updatePage(p => p.blocks.push(b)); setSel({ page: sel.page, block: page.blocks.length }); return; }
+    const b = newBlock(t, 'magazine');
+    const w = Math.min(b.w, 12), h = Math.min(b.h, 12);
+    if (img) b.img = { url: img.url, path: img.path ?? null };
+    updatePage(p => {
+      p.blocks = autoPlace(p.blocks);
+      const pos = cell ? { x: clampN(cell.x, 0, 12 - w), y: clampN(cell.y, 0, 12 - h) } : firstFreeSpot(p.blocks, w, h);
+      p.blocks.push({ ...b, w, h, ...pos });
+    });
+    setSel({ page: sel.page, block: page.blocks.length });
+  };
+  /* ---------- mode Lego (majalah) ---------- */
+  const setRect = (bi: number, r: Rect) => updatePage(p => { p.blocks = autoPlace(p.blocks); Object.assign(p.blocks[bi], r); });
+  const nudge = (dx: number, dy: number, resize: boolean) => {
+    if (sel.block == null) return;
+    updatePage(p => {
+      p.blocks = autoPlace(p.blocks); const b = p.blocks[sel.block!]; if (!b) return;
+      if (resize) { b.w = clampN(b.w + dx, 1, 12 - (b.x ?? 0)); b.h = clampN(b.h + dy, 1, 12 - (b.y ?? 0)); }
+      else { b.x = clampN((b.x ?? 0) + dx, 0, 12 - b.w); b.y = clampN((b.y ?? 0) + dy, 0, 12 - b.h); }
+    });
+  };
+  const restack = (front: boolean) => {
+    if (sel.block == null) return; const i = sel.block;
+    updatePage(p => { p.blocks = autoPlace(p.blocks); const [m] = p.blocks.splice(i, 1); if (front) p.blocks.push(m); else p.blocks.unshift(m); });
+    setSel({ page: sel.page, block: front ? page.blocks.length - 1 : 0 });
+  };
+  const putImage = (bi: number, m: { url: string; path?: string | null }) => updatePage(p => {
+    const b = p.blocks[bi]; if (!b) return;
+    if (b.type === 'gallery') b.images = [...(b.images ?? []), { url: m.url, path: m.path ?? null }].slice(-4);
+    else b.img = { url: m.url, path: m.path ?? null };
+  });
+  const dropMedia = (m: { url: string; path?: string | null }, cell: { x: number; y: number } | null, target: number | null) => {
+    if (target != null && IMAGE_TYPES.includes(page.blocks[target]?.type)) { putImage(target, m); setSel({ page: sel.page, block: target }); toast.show('Foto dipasang ✨'); return; }
+    addBlock('image', cell ?? undefined, m);
+  };
+  useEffect(() => {
+    if (!mag) return;
+    const h = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.closest('input, textarea, select, [contenteditable="true"]'))) return;
+      if (sel.block == null) return;
+      const k = e.key;
+      if (k === 'Escape') { setSel({ page: sel.page, block: null }); return; }
+      if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); removeBlock(); return; }
+      if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'd') { e.preventDefault(); duplicateBlock(); return; }
+      const d = k === 'ArrowLeft' ? [-1, 0] : k === 'ArrowRight' ? [1, 0] : k === 'ArrowUp' ? [0, -1] : k === 'ArrowDown' ? [0, 1] : null;
+      if (d) { e.preventDefault(); nudge(d[0], d[1], e.shiftKey); }
+    };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  });
   const moveBlock = (i: number, dir: -1 | 1) => { const j = i + dir; if (j < 0 || j >= page.blocks.length) return; updatePage(p => { [p.blocks[i], p.blocks[j]] = [p.blocks[j], p.blocks[i]]; }); setSel({ page: sel.page, block: j }); };
   const reorderBlock = (from: number, to: number) => { if (from === to) return; updatePage(p => { const [m] = p.blocks.splice(from, 1); p.blocks.splice(to, 0, m); }); setSel({ page: sel.page, block: to }); };
   const removeBlock = () => { if (sel.block == null) return; updatePage(p => { p.blocks.splice(sel.block!, 1); }); setSel({ page: sel.page, block: null }); };
-  const duplicateBlock = () => { if (!block) return; const c = { ...JSON.parse(JSON.stringify(block)), id: uid() } as Block; updatePage(p => { p.blocks.splice(sel.block! + 1, 0, c); }); setSel({ page: sel.page, block: sel.block! + 1 }); };
-  const moveBlockToPage = (to: number) => { if (!block) return; const b = block; update(d => { d.pages[sel.page].blocks.splice(sel.block!, 1); d.pages[to].blocks.push(b); }); setSel({ page: to, block: data.pages[to].blocks.length }); };
+  const duplicateBlock = () => {
+    if (!block) return; const c = { ...JSON.parse(JSON.stringify(block)), id: uid() } as Block;
+    if (mag) { updatePage(p => { p.blocks = autoPlace(p.blocks); const src = p.blocks[sel.block!]; c.x = clampN((src.x ?? 0) + 1, 0, 12 - c.w); c.y = clampN((src.y ?? 0) + 1, 0, 12 - c.h); p.blocks.push(c); }); setSel({ page: sel.page, block: page.blocks.length }); return; }
+    updatePage(p => { p.blocks.splice(sel.block! + 1, 0, c); }); setSel({ page: sel.page, block: sel.block! + 1 });
+  };
+  const moveBlockToPage = (to: number) => {
+    if (!block) return; const b = { ...block };
+    update(d => {
+      d.pages[sel.page].blocks.splice(sel.block!, 1);
+      if (mag) { const tp = d.pages[to]; tp.blocks = autoPlace(tp.blocks); Object.assign(b, firstFreeSpot(tp.blocks, b.w, b.h)); }
+      d.pages[to].blocks.push(b);
+    });
+    setSel({ page: to, block: data.pages[to].blocks.length });
+  };
   const linkArticle = (id: string) => { const a = articleMap[id]; if (!a) return; updateBlock(b => { b.articleId = id; }); toast.show(`Ditautkan: ${a.title}`); };
   const unlinkArticle = () => { if (!block?.articleId) return; const a = articleMap[block.articleId]; updateBlock(b => { if (a) { b.kicker = a.kicker ?? ''; b.title = a.title; b.deck = a.deck ?? ''; b.byline = a.byline ?? ''; b.body = a.body; if (a.cover_url) b.img = { url: a.cover_url }; b.cap = a.cover_caption ?? b.cap; } b.articleId = null; }); };
 
@@ -135,7 +205,7 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
   return (
     <div className="h-screen flex flex-col">
       {/* ---------- bilah atas ---------- */}
-      <header className="h-12 flex items-center gap-2 px-4 border-b border-[var(--line)] bg-[linear-gradient(#1d1915,#17130f)] shrink-0 z-20">
+      <header className="ed-head h-12 flex items-center gap-2 px-4 border-b border-[var(--line)] bg-[linear-gradient(#1d1915,#17130f)] shrink-0 z-20">
         <Link href={`${base}/edisi`} className="text-sm text-[var(--muted)] hover:text-[var(--text)]">‹ Edisi</Link>
         <span className="text-[var(--muted)]">/</span>
         <span className="font-display truncate">{data.masthead.number || 'Edisi'}</span>
@@ -150,6 +220,49 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
 
       <div className="flex-1 min-h-0 grid grid-cols-[280px_1fr_330px]">
         {/* ---------- kiri ---------- */}
+        {mag ? (
+          <aside className="ed-left overflow-hidden bg-[var(--panel)] border-r border-[var(--line)] flex flex-col min-h-0">
+            <nav className="ed-tabs" role="tablist">
+              {([['lembar', '📄 Lembar'], ['tambah', '🧱 Keping'], ['foto', '🖼 Foto'], ['edisi', '⚙ Edisi']] as const).map(([k, l]) => (
+                <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
+              ))}
+            </nav>
+            <div className="flex-1 min-h-0 overflow-auto">
+              {tab === 'lembar' && <>
+                <StageRail data={data} current={sel.page} onSelect={i => setSel({ page: i, block: null })} onMove={movePage} onRemove={removePage} onAdd={addPage} />
+                <section className="sect border-t border-[var(--line)]">
+                  <h4>Lembar ini</h4>
+                  <div className="field"><label>Nama rubrik</label><input type="text" value={page.section} onChange={e => updatePage(p => { p.section = e.target.value; })} /></div>
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!page.dark} onChange={e => updatePage(p => { p.dark = e.target.checked; })} className="accent-[var(--gold)]" /> Halaman gelap</label>
+                  <div className="flex gap-3 text-[11px] text-[var(--muted)] mt-2"><span>{page.blocks.length} blok</span><span>{words(page.blocks.map(b => (b.articleId ? articleMap[b.articleId]?.body : b.body) ?? '').join(' '))} kata</span></div>
+                </section>
+              </>}
+              {tab === 'tambah' && <BlockPalette types={blockTypes} onAdd={t => addBlock(t)} />}
+              {tab === 'foto' && <PhotoDrawer pub={pub} onUse={m => { if (sel.block != null && IMAGE_TYPES.includes(page.blocks[sel.block]?.type)) { putImage(sel.block, m); toast.show('Foto dipasang ✨'); } else addBlock('image', undefined, m); }} />}
+              {tab === 'edisi' && <section className="sect">
+                <h4>Edisi</h4>
+                <div className="field"><label>Nama majalah</label><input type="text" value={data.masthead.name} onChange={e => update(d => { d.masthead.name = e.target.value; })} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="field"><label>Nomor edisi</label><input type="text" value={data.masthead.number ?? ''} onChange={e => update(d => { d.masthead.number = e.target.value; })} /></div>
+                  <div className="field"><label>Tanggal</label><input type="date" value={data.masthead.date} onChange={e => update(d => { d.masthead.date = e.target.value; })} /></div>
+                </div>
+                <div className="field"><label>Semboyan</label><input type="text" value={data.masthead.tagline ?? ''} onChange={e => update(d => { d.masthead.tagline = e.target.value; })} /></div>
+                <div className="field"><label>Harga</label><input type="text" value={data.masthead.price ?? ''} onChange={e => update(d => { d.masthead.price = e.target.value; })} /></div>
+                <div className="field"><label>Teaser sampul (satu per baris)</label><textarea style={{ minHeight: 70, fontFamily: 'inherit' }} value={(data.masthead.coverLines ?? []).join('\n')} onChange={e => update(d => { d.masthead.coverLines = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); })} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="field"><label>Gaya nama</label><select value={data.theme.mastheadStyle} onChange={e => update(d => { d.theme.mastheadStyle = e.target.value as EditionData['theme']['mastheadStyle']; })}><option value="caps">Kapital berjarak</option><option value="serif">Serif tebal</option><option value="modern">Modern</option><option value="black">Gotik klasik</option></select></div>
+                  <div className="field"><label>Kertas</label><select value={data.theme.tone} onChange={e => update(d => { d.theme.tone = e.target.value as EditionData['theme']['tone']; })}><option value="bright">Putih tulang</option><option value="ivory">Gading hangat</option><option value="aged">Kertas tua</option><option value="sepia">Sepia</option></select></div>
+                </div>
+                <div className="field"><label>Warna aksen</label>
+                  <div className="flex gap-1.5 flex-wrap items-center">
+                    {['#ff3ea5', '#7c5cff', '#06b6d4', '#22c55e', '#f59e0b', '#ef4444', '#111111', '#1f3a5f'].map(c => <button key={c} className={'swatch' + (data.theme.accent === c ? ' on' : '')} style={{ background: c }} onClick={() => update(d => { d.theme.accent = c; })} aria-label={`Aksen ${c}`} />)}
+                    <input type="color" value={data.theme.accent} onChange={e => update(d => { d.theme.accent = e.target.value; })} className="w-5 h-5 bg-transparent border-0 p-0" />
+                  </div>
+                </div>
+              </section>}
+            </div>
+          </aside>
+        ) : (
         <aside className="overflow-auto bg-[var(--panel)] border-r border-[var(--line)]">
           <section className="sect">
             <h4>Edisi</h4>
@@ -210,24 +323,30 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
             {cells > 144 && <div className="warnbox">Total ukuran blok melebihi kapasitas halaman (12×12). Blok yang tidak muat akan terpotong.</div>}
           </section>
         </aside>
+        )}
 
         {/* ---------- kanvas ---------- */}
-        <div ref={canvasRef} className="relative overflow-auto flex items-start justify-center p-7 bg-[radial-gradient(ellipse_at_50%_0%,#2b2520_0%,#15120f_70%)]">
+        <div ref={canvasRef} className="ed-canvas relative overflow-auto flex items-start justify-center p-7 bg-[radial-gradient(ellipse_at_50%_0%,#2b2520_0%,#15120f_70%)]">
           <div ref={pgWrapRef} className="relative shrink-0 shadow-[0_20px_60px_rgba(0,0,0,.55)]" style={{ transformOrigin: '0 0' }}>
             <div style={{ transformOrigin: '0 0' }}>
               <PageView edition={data} index={sel.page} articles={articleMap} edit selected={sel.block} onBlockClick={bi => setSel({ page: sel.page, block: bi })} className="[transform-origin:0_0]" />
             </div>
+            {mag && <CanvasOverlay wrapRef={pgWrapRef} page={page} selected={sel.block} version={sel.page}
+              onSelect={bi => setSel({ page: sel.page, block: bi })} onChange={setRect}
+              onDropBlock={(t, cell) => addBlock(t, cell)} onDropMedia={(m, cell, target) => dropMedia(m, cell, target)} />}
           </div>
-          <div className="absolute left-4 bottom-3 text-[11px] text-[var(--muted)] bg-[rgba(20,16,13,.7)] px-2 py-1 rounded">Halaman {sel.page + 1} / {data.pages.length} · {page.section}{overflow.length ? ` · ${overflow.length} blok teks meluap` : ''}</div>
+          <div className="ed-status absolute left-4 bottom-3 text-[11px] text-[var(--muted)] bg-[rgba(20,16,13,.7)] px-2 py-1 rounded">Halaman {sel.page + 1} / {data.pages.length} · {page.section}{overflow.length ? ` · ${overflow.length} blok teks meluap` : ''}</div>
+          {mag && <div className="ed-hint absolute right-4 bottom-3 text-[11px]">Seret blok = pindah · tarik sudut = ubah ukuran · ←↑→↓ geser · Shift+panah ukuran · Del hapus · Ctrl+D gandakan</div>}
         </div>
 
         {/* ---------- inspektur ---------- */}
         <aside className="overflow-auto bg-[var(--panel)] border-l border-[var(--line)]">
           {!block ? (
-            <div className="p-6 text-center text-sm text-[var(--muted)] leading-relaxed"><div className="font-display text-lg text-[var(--text)] mb-2">Inspektur blok</div>Pilih blok pada halaman atau pada daftar di kiri untuk menyunting isi, ukuran, dan gambar.</div>
+            <div className="p-6 text-center text-sm text-[var(--muted)] leading-relaxed"><div className="font-display text-lg text-[var(--text)] mb-2">{mag ? 'Pilih keping' : 'Inspektur blok'}</div>{mag ? 'Klik blok di halaman untuk mengedit teks & foto. Seret untuk memindah, tarik sudut kanan-bawah untuk mengubah ukuran. Tambah keping atau foto dari tab di kiri.' : 'Pilih blok pada halaman atau pada daftar di kiri untuk menyunting isi, ukuran, dan gambar.'}</div>
           ) : (
             <Inspector block={block} sel={sel} data={data} pub={pub} overflow={overflow.includes(sel.block!)} readyArticles={readyArticles} articleMap={articleMap}
               setB={setB} onDelete={removeBlock} onDuplicate={duplicateBlock} onMoveToPage={moveBlockToPage} onLink={linkArticle} onUnlink={unlinkArticle}
+              onRestack={mag ? restack : undefined}
               pickImage={cb => setPicker(() => cb)} />
           )}
         </aside>
@@ -296,8 +415,9 @@ interface InspectorProps {
   block: Block; sel: Sel; data: EditionData; pub: Publication; overflow: boolean; readyArticles: Article[]; articleMap: ArticleMap;
   setB: <K extends keyof Block>(k: K, v: Block[K]) => void; onDelete: () => void; onDuplicate: () => void; onMoveToPage: (to: number) => void;
   onLink: (id: string) => void; onUnlink: () => void; pickImage: (cb: (m: { url: string; path?: string | null }) => void) => void;
+  onRestack?: (front: boolean) => void;
 }
-function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleMap, setB, onDelete, onDuplicate, onMoveToPage, onLink, onUnlink, pickImage }: InspectorProps) {
+function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleMap, setB, onDelete, onDuplicate, onMoveToPage, onLink, onUnlink, pickImage, onRestack }: InspectorProps) {
   const [q, setQ] = useState('');
   const linked = b.articleId ? articleMap[b.articleId] : null;
   const textual = ['lead', 'article', 'brief', 'text', 'feature', 'cover'].includes(b.type);
@@ -325,6 +445,7 @@ function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleM
         </h4>
         <div className="field"><label>Jenis blok</label><select value={b.type} onChange={e => setB('type', e.target.value as BlockType)}>{blockTypes.map(t => <option key={t} value={t}>{BLOCK_TYPES[t].label}</option>)}</select></div>
         <div className="grid grid-cols-2 gap-2"><div className="field"><label>Lebar (kolom)</label><Range k="w" min={1} max={12} /></div><div className="field"><label>Tinggi (baris)</label><Range k="h" min={1} max={12} /></div></div>
+        {onRestack && <div className="flex gap-2 mb-2"><button className="btn sm flex-1 justify-center" onClick={() => onRestack(true)} title="Taruh di atas keping lain">⬆ Ke depan</button><button className="btn sm flex-1 justify-center" onClick={() => onRestack(false)} title="Taruh di bawah keping lain">⬇ Ke belakang</button></div>}
         {textual && b.type !== 'cover' && b.type !== 'feature' && <div className="grid grid-cols-2 gap-2">
           <div className="field"><label>Ukuran huruf</label><select value={b.scale ?? 'm'} onChange={e => setB('scale', e.target.value as Block['scale'])}><option value="s">Kecil</option><option value="m">Normal</option><option value="l">Besar</option></select></div>
           <div className="field"><label>Kolom teks</label><select value={b.cols ?? 1} onChange={e => setB('cols', Number(e.target.value))}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} kolom</option>)}</select></div>

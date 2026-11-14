@@ -13,6 +13,8 @@ export interface Block {
   type: BlockType;
   w: number;            // 1–12 kolom grid
   h: number;            // 1–12 baris grid
+  x?: number | null;    // 0–11 kolom awal (posisi bebas, opsional — tanpa ini blok mengalir otomatis)
+  y?: number | null;    // 0–11 baris awal
   cols?: number;        // kolom teks 1–4
   scale?: 's' | 'm' | 'l';
   dropcap?: boolean;
@@ -30,9 +32,14 @@ export interface Block {
   invert?: boolean;                 // teks putih di atas foto (cover/feature)
 }
 
+export type PageStage = 'cover' | 'toc' | 'editorial' | 'main' | 'free';
+export const STAGE_LABEL: Record<PageStage, string> = { cover: 'Sampul', toc: 'Daftar Isi', editorial: 'Salam Redaksi', main: 'Liputan Utama', free: 'Halaman kreatif' };
+
 export interface Page {
   id: string;
   section: string;
+  stage?: PageStage;    // tahapan edisi majalah
+  locked?: boolean;     // lembar inti templat: tidak bisa dipindah/dihapus
   dark?: boolean;       // majalah: halaman gelap
   bg?: BlockImage | null;
   blocks: Block[];
@@ -97,6 +104,38 @@ export function fmtDate(d: string | undefined) {
 }
 export const today = () => new Date().toISOString().slice(0, 10);
 
+/* ---------- Posisi bebas (mode Lego) ---------- */
+export const isPlaced = (b: Block) => b.x != null && b.y != null;
+export const pagePlaced = (p: Page) => p.blocks.length > 0 && p.blocks.every(isPlaced);
+
+/** Tiru penempatan otomatis CSS grid (dense) agar blok tidak "melompat" saat beralih ke posisi bebas. */
+export function autoPlace(blocks: Block[], cols = 12, rows = 12): Block[] {
+  const occ: boolean[][] = [];
+  const free = (r: number, c: number, w: number, h: number) => {
+    if (c + w > cols) return false;
+    for (let y = r; y < r + h; y++) for (let x = c; x < c + w; x++) if (occ[y]?.[x]) return false;
+    return true;
+  };
+  const mark = (r: number, c: number, w: number, h: number) => { for (let y = r; y < r + h; y++) { occ[y] ??= []; for (let x = c; x < c + w; x++) occ[y][x] = true; } };
+  for (const b of blocks) if (isPlaced(b)) mark(b.y!, b.x!, clamp(b.w, 1, cols), clamp(b.h, 1, rows));
+  return blocks.map((b) => {
+    if (isPlaced(b)) return b;
+    const w = clamp(b.w || 4, 1, cols), h = clamp(b.h || 4, 1, rows);
+    for (let r = 0; r < rows * 4; r++) for (let c = 0; c <= cols - w; c++) if (free(r, c, w, h)) { mark(r, c, w, h); return { ...b, x: c, y: Math.min(r, rows - 1) }; }
+    return { ...b, x: 0, y: 0 };
+  });
+}
+/** Cari tempat kosong pertama untuk blok baru berukuran w×h (atau kiri-atas bila penuh). */
+export function firstFreeSpot(blocks: Block[], w: number, h: number, cols = 12, rows = 12): { x: number; y: number } {
+  const occ = (x: number, y: number) => blocks.some((b) => isPlaced(b) && x >= b.x! && x < b.x! + b.w && y >= b.y! && y < b.y! + b.h);
+  for (let y = 0; y <= rows - h; y++) for (let x = 0; x <= cols - w; x++) {
+    let ok = true;
+    for (let yy = y; yy < y + h && ok; yy++) for (let xx = x; xx < x + w && ok; xx++) if (occ(xx, yy)) ok = false;
+    if (ok) return { x, y };
+  }
+  return { x: 0, y: 0 };
+}
+
 export function newBlock(type: BlockType, kind: PublicationKind = 'newspaper'): Block {
   const t = BLOCK_TYPES[type] ?? BLOCK_TYPES.article;
   const mag = kind === 'magazine';
@@ -132,7 +171,7 @@ export function normalizeEdition(raw: unknown, kind: PublicationKind): EditionDa
   const pages = Array.isArray(d.pages) && d.pages.length ? d.pages : base.pages;
   return {
     ...base,
-    pages: pages.map((p) => ({ id: p.id || uid(), section: p.section ?? '', dark: !!p.dark, bg: p.bg ?? null,
+    pages: pages.map((p) => ({ id: p.id || uid(), section: p.section ?? '', dark: !!p.dark, bg: p.bg ?? null, stage: p.stage, locked: !!p.locked,
       blocks: (p.blocks ?? []).map((b) => ({ ...newBlock((b.type as BlockType) ?? 'article', k), ...b, id: b.id || uid() })) })),
   };
 }
@@ -172,8 +211,13 @@ export const PAGE_PRESETS: PagePreset[] = [
     mk('article', 'newspaper', { w: 6, h: 12, cols: 1, scale: 'l' }), mk('article', 'newspaper', { w: 6, h: 7, cols: 1 }), mk('quote', 'newspaper', { w: 6, h: 3 }), mk('brief', 'newspaper', { w: 6, h: 2 }) ]) },
   { id: 'np-ads', label: 'Halaman iklan', kinds: ['newspaper', 'magazine'], make: () => pg('Iklan', [
     mk('ad', 'newspaper', { w: 6, h: 6 }), mk('ad', 'newspaper', { w: 6, h: 6 }), mk('ad', 'newspaper', { w: 4, h: 3 }), mk('ad', 'newspaper', { w: 4, h: 3 }), mk('ad', 'newspaper', { w: 4, h: 3 }), mk('brief', 'newspaper', { w: 12, h: 3, dropcap: false }) ]) },
-  { id: 'mg-cover', label: 'Sampul majalah', kinds: ['magazine'], make: () => pg('Sampul', [ mk('cover', 'magazine', { w: 12, h: 12 }) ]) },
-  { id: 'mg-toc', label: 'Daftar isi', kinds: ['magazine'], make: () => pg('Daftar Isi', [ mk('toc', 'magazine', { w: 12, h: 12, title: 'Isi' }) ]) },
+  { id: 'mg-cover', label: 'Sampul majalah', kinds: ['magazine'], make: () => pg('Sampul', [ mk('cover', 'magazine', { w: 12, h: 12 }) ], { stage: 'cover' }) },
+  { id: 'mg-toc', label: 'Daftar isi', kinds: ['magazine'], make: () => pg('Daftar Isi', [ mk('toc', 'magazine', { w: 12, h: 12, title: 'Isi' }) ], { stage: 'toc' }) },
+  { id: 'mg-editorial', label: 'Salam redaksi', kinds: ['magazine'], make: () => pg('Salam Redaksi', [
+    mk('text', 'magazine', { w: 7, h: 12, x: 0, y: 0, cols: 1, kicker: 'SALAM REDAKSI', title: 'Halo, pembaca!', body: 'Tulis sapaan tim redaksi untuk edisi ini: tema besar, cerita di balik layar, dan ucapan terima kasih.' }),
+    mk('image', 'magazine', { w: 5, h: 7, x: 7, y: 0, title: 'Tim redaksi' }),
+    mk('quote', 'magazine', { w: 5, h: 5, x: 7, y: 7, body: 'Kutipan favorit tim untuk edisi ini.' }) ], { stage: 'editorial' }) },
+  { id: 'mg-main', label: 'Liputan utama', kinds: ['magazine'], make: () => pg('Liputan Utama', [ mk('feature', 'magazine', { w: 12, h: 12, x: 0, y: 0, kicker: 'LIPUTAN UTAMA', title: 'Judul liputan utama edisi ini' }) ], { stage: 'main' }) },
   { id: 'mg-feature', label: 'Pembuka feature (foto penuh)', kinds: ['magazine'], make: () => pg('Feature', [ mk('feature', 'magazine', { w: 12, h: 12 }) ]) },
   { id: 'mg-text', label: 'Halaman teks (teks + foto + kutipan)', kinds: ['magazine'], make: () => pg('Feature', [
     mk('text', 'magazine', { w: 7, h: 12, cols: 2 }), mk('quote', 'magazine', { w: 5, h: 5 }), mk('image', 'magazine', { w: 5, h: 7 }) ]) },
@@ -184,3 +228,15 @@ export const PAGE_PRESETS: PagePreset[] = [
     mk('text', 'magazine', { w: 7, h: 12, cols: 1, scale: 'l' }), mk('image', 'magazine', { w: 5, h: 12 }) ], { dark: true }) },
   { id: 'blank', label: 'Halaman kosong', kinds: ['newspaper', 'magazine'], make: () => pg('Halaman', []) },
 ];
+
+/** Templat utama edisi majalah: 4 lembar inti terkunci + halaman kreatif awal. */
+export const MAGAZINE_TEMPLATE: { preset: string; locked: boolean }[] = [
+  { preset: 'mg-cover', locked: true }, { preset: 'mg-toc', locked: true }, { preset: 'mg-editorial', locked: true }, { preset: 'mg-main', locked: true },
+  { preset: 'mg-text', locked: false }, { preset: 'mg-gallery', locked: false }, { preset: 'mg-half', locked: false },
+];
+export function magazineTemplatePages(): Page[] {
+  return MAGAZINE_TEMPLATE.map(({ preset, locked }) => {
+    const p = (PAGE_PRESETS.find((x) => x.id === preset) ?? PAGE_PRESETS[PAGE_PRESETS.length - 1]).make();
+    return { ...p, locked, stage: p.stage ?? 'free', blocks: autoPlace(p.blocks) };
+  });
+}

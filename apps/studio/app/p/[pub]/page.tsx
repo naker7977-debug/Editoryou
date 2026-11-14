@@ -3,7 +3,7 @@ import { requirePub } from '@/lib/pub';
 import { createClient } from '@press/db/server';
 import { ARTICLE_STATUS_LABEL, EDITION_STATUS_LABEL, formatDate, type Article, type Edition } from '@press/db';
 import { createArticle, createEdition } from '@/lib/actions';
-import { canLayout } from '@press/db';
+import { canLayoutIn } from '@press/db';
 import { TeenDashboard } from '@/components/TeenDashboard';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +26,7 @@ export default async function Overview({ params }: { params: Promise<{ pub: stri
   const arts = (articles ?? []) as unknown as Article[];
   const eds = (editions ?? []) as Edition[];
   const published = eds.filter(e => e.status === 'published').length;
-  const layoutOk = role === 'superadmin' || canLayout(role);
+  const layoutOk = canLayoutIn(pub, role);
   const base = `/p/${pub.slug}`;
   return (
     <div className="p-8 max-w-6xl w-full">

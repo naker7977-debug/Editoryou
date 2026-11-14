@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requirePub } from '@/lib/pub';
-import { ROLE_LABEL, canLayout, canManageMembers } from '@press/db';
+import { ROLE_LABEL, canLayoutIn, canManageMembers } from '@press/db';
 import { SideNav } from '@/components/SideNav';
 
 export default async function PubLayout({ children, params }: { children: React.ReactNode; params: Promise<{ pub: string }> }) {
@@ -11,7 +11,7 @@ export default async function PubLayout({ children, params }: { children: React.
   const items = [
     { href: base, label: teen ? 'Dashboard' : 'Ringkasan', icon: '◫', exact: true },
     { href: `${base}/naskah`, label: teen ? 'Tulisan' : 'Naskah', icon: '✎', dot: '#ff5cc8' },
-    ...(canLayout(role === 'superadmin' ? 'chief' : role) ? [{ href: `${base}/edisi`, label: teen ? 'Edisi & Layout' : 'Edisi & Tata Letak', icon: '▤', dot: '#a3e635' }] : [{ href: `${base}/edisi`, label: 'Edisi', icon: '▤', dot: '#a3e635' }]),
+    ...(canLayoutIn(pub, role) ? [{ href: `${base}/edisi`, label: teen ? 'Edisi & Layout' : 'Edisi & Tata Letak', icon: '▤', dot: '#a3e635' }] : [{ href: `${base}/edisi`, label: 'Edisi', icon: '▤', dot: '#a3e635' }]),
     { href: `${base}/media`, label: teen ? 'Galeri Foto' : 'Media', icon: '▣', dot: '#22d3ee' },
     { href: `${base}/tim`, label: teen ? 'Tim Kita' : 'Tim Redaksi', icon: '☷', dot: '#ffb547' },
     ...(role === 'superadmin' || canManageMembers(role) ? [{ href: `${base}/pengaturan`, label: 'Pengaturan', icon: '⚙' }] : []),

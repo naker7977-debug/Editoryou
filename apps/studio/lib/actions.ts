@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createClient, getSession } from '@press/db/server';
-import { newEditionData, newPage, PAGE_PRESETS } from '@press/ui';
+import { magazineTemplatePages, newEditionData, newPage, PAGE_PRESETS } from '@press/ui';
 import type { Publication } from '@press/db';
 
 export async function createArticle(pubId: string, pubSlug: string) {
@@ -28,8 +28,8 @@ export async function createEdition(pub: Publication, opts: { withTemplate?: boo
   const s = pub.settings ?? {};
   const data = newEditionData(pub.type, { name: pub.name, tagline: pub.tagline ?? '', city: pub.city ?? '', price: s.price ?? '', motto: s.motto ?? '' }, { accent: s.accent, tone: s.tone, mastheadStyle: s.mastheadStyle });
   if (opts.withTemplate) {
-    const ids = pub.type === 'magazine' ? ['mg-cover', 'mg-toc', 'mg-feature', 'mg-text', 'mg-gallery', 'mg-half', 'mg-dark', 'np-ads'] : ['np-front', 'np-3col', 'np-3col', 'np-opini', 'np-ads', 'np-3col'];
-    data.pages = ids.map(id => PAGE_PRESETS.find(p => p.id === id)?.make() ?? newPage());
+    if (pub.type === 'magazine') data.pages = magazineTemplatePages();
+    else data.pages = ['np-front', 'np-3col', 'np-3col', 'np-opini', 'np-ads', 'np-3col'].map(id => PAGE_PRESETS.find(p => p.id === id)?.make() ?? newPage());
   }
   const today = new Date().toISOString().slice(0, 10);
   const { data: row, error } = await supabase.from('editions').insert({ publication_id: pub.id, title: pub.name, number: 'Edisi baru', edition_date: today, data, created_by: user.id }).select('id').single();
@@ -47,7 +47,10 @@ export async function deleteEdition(id: string, pubSlug: string) {
 
 export async function updatePublicationSettings(pubId: string, pubSlug: string, form: FormData) {
   const supabase = await createClient();
+  const { data: cur } = await supabase.from('publications').select('settings').eq('id', pubId).maybeSingle();
   const settings = {
+    ...(cur?.settings ?? {}),
+    openLayout: form.get('openLayout') === 'on',
     accent: String(form.get('accent') || '#8b1e1e'), tone: String(form.get('tone') || 'ivory'), mastheadStyle: String(form.get('mastheadStyle') || 'black'),
     price: String(form.get('price') || ''), motto: String(form.get('motto') || ''), frequency: String(form.get('frequency') || ''),
   };

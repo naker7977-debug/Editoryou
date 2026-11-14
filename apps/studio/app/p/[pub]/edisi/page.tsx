@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requirePub } from '@/lib/pub';
 import { createClient } from '@press/db/server';
-import { EDITION_STATUS_LABEL, canLayout, formatDate, type Edition } from '@press/db';
+import { EDITION_STATUS_LABEL, canLayoutIn, formatDate, type Edition } from '@press/db';
 import { createEdition } from '@/lib/actions';
 import { PageThumb, normalizeEdition } from '@press/ui';
 
@@ -13,7 +13,7 @@ export default async function Editions({ params }: { params: Promise<{ pub: stri
   const supabase = await createClient();
   const { data } = await supabase.from('editions').select('id,title,number,edition_date,status,access,published_at,updated_at,cover_data').eq('publication_id', pub.id).order('edition_date', { ascending: false }).order('created_at', { ascending: false });
   const eds = (data ?? []) as unknown as Array<Edition & { cover_data?: unknown }>;
-  const layoutOk = role === 'superadmin' || canLayout(role);
+  const layoutOk = canLayoutIn(pub, role);
   const base = `/p/${pub.slug}/edisi`;
   return (
     <div className="p-8 max-w-6xl w-full">

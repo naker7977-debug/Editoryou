@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@press/db/server';
-import { ARTICLE_STATUS_LABEL, EDITION_STATUS_LABEL, ROLE_LABEL, canLayout, formatDate, type Article, type ArticleStatus, type Edition, type Media, type Publication, type PublicationMember } from '@press/db';
+import { ARTICLE_STATUS_LABEL, EDITION_STATUS_LABEL, ROLE_LABEL, canLayoutIn, formatDate, type Article, type ArticleStatus, type Edition, type Media, type Publication, type PublicationMember } from '@press/db';
 import { createArticle, createEdition } from '@/lib/actions';
 import { AssetDrop } from './AssetDrop';
 
@@ -46,7 +46,7 @@ export interface TeenData { pub: Publication; role: PublicationMember['role'] | 
 
 export function TeenDashboardView({ pub, role, userId, firstName, arts, media, members, eds, publishedCount }: TeenData) {
   const base = `/p/${pub.slug}`;
-  const layoutOk = role === 'superadmin' || canLayout(role);
+  const layoutOk = canLayoutIn(pub, role);
 
   const total = arts.length;
   const by = (s: ArticleStatus) => arts.filter(x => x.status === s);

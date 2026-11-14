@@ -99,7 +99,11 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
   if (b.dropcap && ['lead', 'article', 'text'].includes(b.type)) cls.push('dc');
   if (['lead', 'article', 'brief', 'text', 'quote', 'feature'].includes(b.type)) cls.push('readable');
   if (b.img?.url && textual) cls.push('hasimg');
-  const style: React.CSSProperties = { gridColumn: `span ${w}`, gridRow: `span ${h}` };
+  const placed = b.x != null && b.y != null;
+  const x = placed ? clamp(b.x!, 0, 12 - w) : 0, y = placed ? clamp(b.y!, 0, 11) : 0;
+  const style: React.CSSProperties = placed
+    ? { gridColumn: `${x + 1} / span ${w}`, gridRow: `${y + 1} / span ${Math.min(h, 12 - y)}`, zIndex: bi + 1 }
+    : { gridColumn: `span ${w}`, gridRow: `span ${h}` };
   const ms = edition.masthead;
 
   let inner: React.ReactNode;

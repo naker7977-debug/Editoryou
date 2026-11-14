@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { requirePub } from '@/lib/pub';
 import { createClient } from '@press/db/server';
-import { canLayout, canPublish, type Article, type Edition } from '@press/db';
+import { canLayoutIn, canPublish, type Article, type Edition } from '@press/db';
 import { LayoutEditor } from '@/components/LayoutEditor';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function EditionPage({ params }: { params: Promise<{ pub: string; id: string }> }) {
   const { pub: slug, id } = await params;
   const { pub, role } = await requirePub(slug);
-  if (!(role === 'superadmin' || canLayout(role))) redirect(`/p/${slug}/edisi/${id}/pratinjau`);
+  if (!canLayoutIn(pub, role)) redirect(`/p/${slug}/edisi/${id}/pratinjau`);
   const supabase = await createClient();
   const [{ data: ed }, { data: arts }] = await Promise.all([
     supabase.from('editions').select('*').eq('id', id).maybeSingle(),
