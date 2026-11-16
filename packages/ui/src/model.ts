@@ -6,7 +6,44 @@ export type BlockType = 'lead' | 'article' | 'brief' | 'image' | 'quote' | 'ad' 
 export type Tone = 'ivory' | 'aged' | 'sepia' | 'bright' | 'white';
 export type MastheadStyle = 'black' | 'serif' | 'caps' | 'modern';
 
-export interface BlockImage { url: string; path?: string | null; w?: number; h?: number }
+/* ---------- Foto hidup (gambar yang bergerak) ---------- */
+export type MotionFilter = 'none' | 'print' | 'sepia' | 'mono' | 'duo';
+export type MotionPlay = 'auto' | 'tap';
+export const MOTION_FILTER_LABEL: Record<MotionFilter, string> = { none: 'Asli', print: 'Cetak koran', sepia: 'Sepia', mono: 'Hitam-putih', duo: 'Duotone aksen' };
+export interface BlockMotion {
+  kind: 'file' | 'youtube';
+  src: string;              // URL berkas video, atau ID video YouTube
+  path?: string | null;     // path di storage (berkas)
+  filter?: MotionFilter | null; // null/undefined = ikut bawaan edisi
+  play?: MotionPlay | null;     // auto = berulang tanpa suara saat halaman terbuka; tap = diam sampai diketuk
+  sound?: boolean;          // boleh bersuara saat diketuk
+  start?: number;           // detik awal (YouTube)
+}
+/** Pengaturan foto hidup per edisi (disalin dari pengaturan penerbit saat edisi dibuat). */
+export interface EditionMotion { enabled: boolean; filter: MotionFilter; play: MotionPlay; kiosk: boolean }
+export const DEFAULT_MOTION: EditionMotion = { enabled: true, filter: 'none', play: 'auto', kiosk: true };
+
+export interface BlockImage { url: string; path?: string | null; w?: number; h?: number; motion?: BlockMotion | null }
+
+/** Ambil ID video dari tautan YouTube apa pun (watch, youtu.be, shorts, embed) atau ID polos. */
+export function youtubeId(input: string): string | null {
+  const s = (input || '').trim();
+  if (/^[\w-]{11}$/.test(s)) return s;
+  try {
+    const u = new URL(s.startsWith('http') ? s : 'https://' + s);
+    const h = u.hostname.replace(/^www\.|^m\./, '');
+    if (h === 'youtu.be') return u.pathname.slice(1, 12) || null;
+    if (h.endsWith('youtube.com') || h.endsWith('youtube-nocookie.com')) {
+      if (u.searchParams.get('v')) return u.searchParams.get('v')!.slice(0, 11);
+      const m = u.pathname.match(/\/(?:shorts|embed|live|v)\/([\w-]{11})/);
+      if (m) return m[1];
+    }
+  } catch { /* bukan URL */ }
+  return null;
+}
+export const ytPoster = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+/** Gambar diam untuk sebuah slot: foto yang dipilih, atau sampul YouTube bila hanya ada video. */
+export const posterOf = (im?: BlockImage | null) => im?.url || (im?.motion?.kind === 'youtube' ? ytPoster(im.motion.src) : '') || null;
 
 export interface Block {
   id: string;
@@ -63,6 +100,7 @@ export interface EditionData {
   masthead: Masthead;
   theme: EditionTheme;
   pages: Page[];
+  motion?: EditionMotion;
 }
 
 export interface ArticleLike {
@@ -171,6 +209,7 @@ export function normalizeEdition(raw: unknown, kind: PublicationKind): EditionDa
   const pages = Array.isArray(d.pages) && d.pages.length ? d.pages : base.pages;
   return {
     ...base,
+    motion: d.motion ? { ...DEFAULT_MOTION, ...d.motion } : undefined,
     pages: pages.map((p) => ({ id: p.id || uid(), section: p.section ?? '', dark: !!p.dark, bg: p.bg ?? null, stage: p.stage, locked: !!p.locked,
       blocks: (p.blocks ?? []).map((b) => ({ ...newBlock((b.type as BlockType) ?? 'article', k), ...b, id: b.id || uid() })) })),
   };

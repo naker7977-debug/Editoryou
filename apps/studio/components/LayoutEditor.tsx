@@ -5,11 +5,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createClient } from '@press/db/browser';
 import { ARTICLE_STATUS_LABEL, type Article, type Edition, type EditionAccess, type EditionStatus, type Publication } from '@press/db';
 import {
-  BLOCK_TYPES, PAGE_PRESETS, PageView, markOverflow, newBlock, newPage, normalizeEdition, freezeEdition, words, uid, imgSrc, autoPlace, firstFreeSpot,
+  BLOCK_TYPES, PAGE_PRESETS, PageView, markOverflow, newBlock, newPage, normalizeEdition, freezeEdition, words, uid, imgSrc, autoPlace, firstFreeSpot, pagePlaced,
+  DEFAULT_MOTION, MOTION_FILTER_LABEL, posterOf, type BlockImage, type MotionFilter, type MotionPlay,
   type ArticleMap, type Block, type BlockType, type EditionData, type Page,
 } from '@press/ui';
 import { BlockPalette, CanvasOverlay, IMAGE_TYPES, PhotoDrawer, StageRail, type Rect } from './LegoParts';
 import { MediaPicker } from './MediaPicker';
+import { MotionPanel } from './LivePanel';
 import { Toast, useToast } from './Toast';
 import { deleteEdition } from '@/lib/actions';
 
@@ -29,11 +31,13 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
   const [publishOpen, setPublishOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<'lembar' | 'tambah' | 'foto' | 'edisi'>('lembar');
+  const [liveIntent, setLiveIntent] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
   const pgWrapRef = useRef<HTMLDivElement>(null);
   const firstRender = useRef(true);
   const articleMap: ArticleMap = useMemo(() => Object.fromEntries(articles.map(a => [a.id, a])), [articles]);
   const mag = pub.type === 'magazine';
+  const mo = { ...DEFAULT_MOTION, ...(data.motion ?? {}) };
 
   const page = data.pages[clampN(sel.page, 0, data.pages.length - 1)];
   const block = sel.block != null ? page?.blocks[sel.block] ?? null : null;
@@ -86,17 +90,16 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
   const lastLocked = data.pages.reduce((a, p, i) => (p.locked ? i : a), -1);
   const addPage = (presetId: string) => {
     const pr = PAGE_PRESETS.find(p => p.id === presetId); const np = pr ? pr.make() : newPage();
-    if (mag) { np.stage = np.stage ?? 'free'; np.locked = false; np.blocks = autoPlace(np.blocks); }
+    np.stage = np.stage ?? 'free'; np.locked = false; np.blocks = autoPlace(np.blocks);
     const at = Math.max(sel.page, lastLocked) + 1;
     update(d => { d.pages.splice(at, 0, np); }); setSel({ page: at, block: null });
   };
   const movePage = (i: number, dir: -1 | 1) => { const j = i + dir; if (j < 0 || j >= data.pages.length) return; if (data.pages[i].locked || data.pages[j].locked) { toast.show('Lembar inti templat tidak bisa dipindah', true); return; } update(d => { [d.pages[i], d.pages[j]] = [d.pages[j], d.pages[i]]; }); setSel({ page: j, block: null }); };
   const removePage = (i: number) => { if (data.pages[i]?.locked) { toast.show('Lembar inti templat tidak bisa dihapus — kosongkan isinya saja bila perlu', true); return; } if (data.pages.length <= 1) { toast.show('Minimal satu halaman', true); return; } if (!confirm(`Hapus halaman "${data.pages[i].section}" (${data.pages[i].blocks.length} blok)?`)) return; update(d => { d.pages.splice(i, 1); }); setSel({ page: clampN(i, 0, data.pages.length - 2), block: null }); };
-  const addBlock = (t: BlockType, cell?: { x: number; y: number }, img?: { url: string; path?: string | null }) => {
-    if (!mag) { const b = newBlock(t); updatePage(p => p.blocks.push(b)); setSel({ page: sel.page, block: page.blocks.length }); return; }
-    const b = newBlock(t, 'magazine');
+  const addBlock = (t: BlockType, cell?: { x: number; y: number }, img?: BlockImage) => {
+    const b = newBlock(t, pub.type);
     const w = Math.min(b.w, 12), h = Math.min(b.h, 12);
-    if (img) b.img = { url: img.url, path: img.path ?? null };
+    if (img) b.img = { url: img.url, path: img.path ?? null, ...(img.motion ? { motion: img.motion } : {}) };
     updatePage(p => {
       p.blocks = autoPlace(p.blocks);
       const pos = cell ? { x: clampN(cell.x, 0, 12 - w), y: clampN(cell.y, 0, 12 - h) } : firstFreeSpot(p.blocks, w, h);
@@ -119,17 +122,17 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
     updatePage(p => { p.blocks = autoPlace(p.blocks); const [m] = p.blocks.splice(i, 1); if (front) p.blocks.push(m); else p.blocks.unshift(m); });
     setSel({ page: sel.page, block: front ? page.blocks.length - 1 : 0 });
   };
-  const putImage = (bi: number, m: { url: string; path?: string | null }) => updatePage(p => {
+  const putImage = (bi: number, m: BlockImage) => updatePage(p => {
     const b = p.blocks[bi]; if (!b) return;
-    if (b.type === 'gallery') b.images = [...(b.images ?? []), { url: m.url, path: m.path ?? null }].slice(-4);
-    else b.img = { url: m.url, path: m.path ?? null };
+    const im: BlockImage = { url: m.url, path: m.path ?? null, ...(m.motion ? { motion: m.motion } : {}) };
+    if (b.type === 'gallery') b.images = [...(b.images ?? []), im].slice(-4);
+    else b.img = im;
   });
-  const dropMedia = (m: { url: string; path?: string | null }, cell: { x: number; y: number } | null, target: number | null) => {
-    if (target != null && IMAGE_TYPES.includes(page.blocks[target]?.type)) { putImage(target, m); setSel({ page: sel.page, block: target }); toast.show('Foto dipasang ✨'); return; }
+  const dropMedia = (m: BlockImage, cell: { x: number; y: number } | null, target: number | null) => {
+    if (target != null && IMAGE_TYPES.includes(page.blocks[target]?.type)) { putImage(target, m); setSel({ page: sel.page, block: target }); toast.show(m.motion ? 'Foto hidup dipasang ✦' : 'Foto dipasang ✨'); return; }
     addBlock('image', cell ?? undefined, m);
   };
   useEffect(() => {
-    if (!mag) return;
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.closest('input, textarea, select, [contenteditable="true"]'))) return;
@@ -148,14 +151,13 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
   const removeBlock = () => { if (sel.block == null) return; updatePage(p => { p.blocks.splice(sel.block!, 1); }); setSel({ page: sel.page, block: null }); };
   const duplicateBlock = () => {
     if (!block) return; const c = { ...JSON.parse(JSON.stringify(block)), id: uid() } as Block;
-    if (mag) { updatePage(p => { p.blocks = autoPlace(p.blocks); const src = p.blocks[sel.block!]; c.x = clampN((src.x ?? 0) + 1, 0, 12 - c.w); c.y = clampN((src.y ?? 0) + 1, 0, 12 - c.h); p.blocks.push(c); }); setSel({ page: sel.page, block: page.blocks.length }); return; }
-    updatePage(p => { p.blocks.splice(sel.block! + 1, 0, c); }); setSel({ page: sel.page, block: sel.block! + 1 });
+    { updatePage(p => { p.blocks = autoPlace(p.blocks); const src = p.blocks[sel.block!]; c.x = clampN((src.x ?? 0) + 1, 0, 12 - c.w); c.y = clampN((src.y ?? 0) + 1, 0, 12 - c.h); p.blocks.push(c); }); setSel({ page: sel.page, block: page.blocks.length }); return; }
   };
   const moveBlockToPage = (to: number) => {
     if (!block) return; const b = { ...block };
     update(d => {
       d.pages[sel.page].blocks.splice(sel.block!, 1);
-      if (mag) { const tp = d.pages[to]; tp.blocks = autoPlace(tp.blocks); Object.assign(b, firstFreeSpot(tp.blocks, b.w, b.h)); }
+      { const tp = d.pages[to]; tp.blocks = autoPlace(tp.blocks); Object.assign(b, firstFreeSpot(tp.blocks, b.w, b.h)); }
       d.pages[to].blocks.push(b);
     });
     setSel({ page: to, block: data.pages[to].blocks.length });
@@ -220,8 +222,7 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
 
       <div className="flex-1 min-h-0 grid grid-cols-[280px_1fr_330px]">
         {/* ---------- kiri ---------- */}
-        {mag ? (
-          <aside className="ed-left overflow-hidden bg-[var(--panel)] border-r border-[var(--line)] flex flex-col min-h-0">
+        <aside className="ed-left overflow-hidden bg-[var(--panel)] border-r border-[var(--line)] flex flex-col min-h-0">
             <nav className="ed-tabs" role="tablist">
               {([['lembar', '📄 Lembar'], ['tambah', '🧱 Keping'], ['foto', '🖼 Foto'], ['edisi', '⚙ Edisi']] as const).map(([k, l]) => (
                 <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
@@ -229,124 +230,83 @@ export function LayoutEditor({ edition, pub, articles, canPublish }: { edition: 
             </nav>
             <div className="flex-1 min-h-0 overflow-auto">
               {tab === 'lembar' && <>
-                <StageRail data={data} current={sel.page} onSelect={i => setSel({ page: i, block: null })} onMove={movePage} onRemove={removePage} onAdd={addPage} />
+                <StageRail data={data} kind={pub.type} current={sel.page} onSelect={i => setSel({ page: i, block: null })} onMove={movePage} onRemove={removePage} onAdd={addPage} />
                 <section className="sect border-t border-[var(--line)]">
                   <h4>Lembar ini</h4>
                   <div className="field"><label>Nama rubrik</label><input type="text" value={page.section} onChange={e => updatePage(p => { p.section = e.target.value; })} /></div>
-                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!page.dark} onChange={e => updatePage(p => { p.dark = e.target.checked; })} className="accent-[var(--gold)]" /> Halaman gelap</label>
+                  {mag && <label className="flex items-center gap-2 text-xs mb-2"><input type="checkbox" checked={!!page.dark} onChange={e => updatePage(p => { p.dark = e.target.checked; })} className="accent-[var(--gold)]" /> Halaman gelap</label>}
+                  {mag && <div className="field"><label>Latar halaman</label>
+                    <div className="flex gap-2 mb-2"><button className="btn sm" onClick={() => setPicker(() => (m: { url: string; path?: string | null }) => updatePage(p => { p.bg = { ...(p.bg ?? {}), url: m.url, path: m.path ?? null }; }))}>{page.bg ? 'Ganti foto latar' : 'Pilih foto latar'}</button>{page.bg && <button className="btn sm" onClick={() => updatePage(p => { p.bg = null; })}>Lepas</button>}</div>
+                    <MotionPanel pub={pub} title="Latar hidup" image={page.bg} onChange={im => updatePage(p => { p.bg = im; })} />
+                  </div>}
                   <div className="flex gap-3 text-[11px] text-[var(--muted)] mt-2"><span>{page.blocks.length} blok</span><span>{words(page.blocks.map(b => (b.articleId ? articleMap[b.articleId]?.body : b.body) ?? '').join(' '))} kata</span></div>
+                  {cells > 144 && !pagePlaced(page) && <div className="warnbox mt-2">Total ukuran blok melebihi kapasitas halaman (12×12). Seret blok untuk mengatur ulang.</div>}
                 </section>
               </>}
-              {tab === 'tambah' && <BlockPalette types={blockTypes} onAdd={t => addBlock(t)} />}
-              {tab === 'foto' && <PhotoDrawer pub={pub} onUse={m => { if (sel.block != null && IMAGE_TYPES.includes(page.blocks[sel.block]?.type)) { putImage(sel.block, m); toast.show('Foto dipasang ✨'); } else addBlock('image', undefined, m); }} />}
-              {tab === 'edisi' && <section className="sect">
+              {tab === 'tambah' && <BlockPalette types={blockTypes} onAdd={t => addBlock(t)} onAddLive={() => { addBlock('image'); setLiveIntent(x => x + 1); }} />}
+              {tab === 'foto' && <PhotoDrawer pub={pub} onUse={m => { if (sel.block != null && IMAGE_TYPES.includes(page.blocks[sel.block]?.type)) { putImage(sel.block, m); toast.show(m.motion ? 'Foto hidup dipasang ✦' : 'Foto dipasang ✨'); } else addBlock('image', undefined, m); }} />}
+              {tab === 'edisi' && <>
+              <section className="sect">
                 <h4>Edisi</h4>
-                <div className="field"><label>Nama majalah</label><input type="text" value={data.masthead.name} onChange={e => update(d => { d.masthead.name = e.target.value; })} /></div>
+                <div className="field"><label>Nama {mag ? 'majalah' : 'koran'}</label><input type="text" value={data.masthead.name} onChange={e => update(d => { d.masthead.name = e.target.value; })} /></div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="field"><label>Nomor edisi</label><input type="text" value={data.masthead.number ?? ''} onChange={e => update(d => { d.masthead.number = e.target.value; })} /></div>
                   <div className="field"><label>Tanggal</label><input type="date" value={data.masthead.date} onChange={e => update(d => { d.masthead.date = e.target.value; })} /></div>
                 </div>
                 <div className="field"><label>Semboyan</label><input type="text" value={data.masthead.tagline ?? ''} onChange={e => update(d => { d.masthead.tagline = e.target.value; })} /></div>
-                <div className="field"><label>Harga</label><input type="text" value={data.masthead.price ?? ''} onChange={e => update(d => { d.masthead.price = e.target.value; })} /></div>
-                <div className="field"><label>Teaser sampul (satu per baris)</label><textarea style={{ minHeight: 70, fontFamily: 'inherit' }} value={(data.masthead.coverLines ?? []).join('\n')} onChange={e => update(d => { d.masthead.coverLines = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); })} /></div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="field"><label>Gaya nama</label><select value={data.theme.mastheadStyle} onChange={e => update(d => { d.theme.mastheadStyle = e.target.value as EditionData['theme']['mastheadStyle']; })}><option value="caps">Kapital berjarak</option><option value="serif">Serif tebal</option><option value="modern">Modern</option><option value="black">Gotik klasik</option></select></div>
-                  <div className="field"><label>Kertas</label><select value={data.theme.tone} onChange={e => update(d => { d.theme.tone = e.target.value as EditionData['theme']['tone']; })}><option value="bright">Putih tulang</option><option value="ivory">Gading hangat</option><option value="aged">Kertas tua</option><option value="sepia">Sepia</option></select></div>
+                  <div className="field"><label>Kota</label><input type="text" value={data.masthead.city ?? ''} onChange={e => update(d => { d.masthead.city = e.target.value; })} /></div>
+                  <div className="field"><label>Harga</label><input type="text" value={data.masthead.price ?? ''} onChange={e => update(d => { d.masthead.price = e.target.value; })} /></div>
+                </div>
+                {!mag && <div className="field"><label>Keterangan kop</label><input type="text" value={data.masthead.motto ?? ''} onChange={e => update(d => { d.masthead.motto = e.target.value; })} placeholder="Terbit sejak 1962" /></div>}
+                {mag && <div className="field"><label>Teaser sampul (satu per baris)</label><textarea style={{ minHeight: 70, fontFamily: 'inherit' }} value={(data.masthead.coverLines ?? []).join('\n')} onChange={e => update(d => { d.masthead.coverLines = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); })} /></div>}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="field"><label>Gaya kop</label><select value={data.theme.mastheadStyle} onChange={e => update(d => { d.theme.mastheadStyle = e.target.value as EditionData['theme']['mastheadStyle']; })}><option value="black">Gotik klasik</option><option value="serif">Serif tebal</option><option value="caps">Kapital berjarak</option><option value="modern">Modern</option></select></div>
+                  <div className="field"><label>Kertas</label><select value={data.theme.tone} onChange={e => update(d => { d.theme.tone = e.target.value as EditionData['theme']['tone']; })}><option value="ivory">Gading hangat</option><option value="aged">Kertas tua</option><option value="sepia">Sepia</option><option value="bright">Putih tulang</option></select></div>
                 </div>
                 <div className="field"><label>Warna aksen</label>
                   <div className="flex gap-1.5 flex-wrap items-center">
-                    {['#ff3ea5', '#7c5cff', '#06b6d4', '#22c55e', '#f59e0b', '#ef4444', '#111111', '#1f3a5f'].map(c => <button key={c} className={'swatch' + (data.theme.accent === c ? ' on' : '')} style={{ background: c }} onClick={() => update(d => { d.theme.accent = c; })} aria-label={`Aksen ${c}`} />)}
+                    {(mag ? ['#ff3ea5', '#7c5cff', '#06b6d4', '#22c55e', '#f59e0b', '#ef4444', '#111111', '#1f3a5f'] : ['#8b1e1e', '#1f3a5f', '#2f5a30', '#6b4a1f', '#1a1612', '#7a2a6b', '#b8641e', '#c0472b', '#111111']).map(c => <button key={c} className={'swatch' + (data.theme.accent === c ? ' on' : '')} style={{ background: c }} onClick={() => update(d => { d.theme.accent = c; })} />)}
                     <input type="color" value={data.theme.accent} onChange={e => update(d => { d.theme.accent = e.target.value; })} className="w-5 h-5 bg-transparent border-0 p-0" />
                   </div>
                 </div>
-              </section>}
+              </section>
+                <section className="sect border-t border-[var(--line)]">
+                  <h4>✦ Foto hidup edisi ini</h4>
+                  <label className="flex items-center gap-2 text-xs mb-2"><input type="checkbox" checked={mo.enabled} onChange={e => update(d => { d.motion = { ...mo, enabled: e.target.checked }; })} className="accent-[var(--gold)]" /> Aktifkan foto hidup di edisi ini</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="field"><label>Putar bawaan</label><select value={mo.play} onChange={e => update(d => { d.motion = { ...mo, play: e.target.value as MotionPlay }; })}><option value="auto">Otomatis berulang</option><option value="tap">Saat diketuk</option></select></div>
+                    <div className="field"><label>Filter bawaan</label><select value={mo.filter} onChange={e => update(d => { d.motion = { ...mo, filter: e.target.value as MotionFilter }; })}>{(Object.keys(MOTION_FILTER_LABEL) as MotionFilter[]).map(f => <option key={f} value={f}>{MOTION_FILTER_LABEL[f]}</option>)}</select></div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={mo.kiosk} onChange={e => update(d => { d.motion = { ...mo, kiosk: e.target.checked }; })} className="accent-[var(--gold)]" /> Sampul ikut hidup di rak kios</label>
+                  <p className="text-[10px] text-[var(--muted)] mt-2 leading-relaxed">Setiap foto bisa dijadikan hidup dari panel kanan (pilih blok → <b>✦ Jadikan foto hidup</b>). Pengaturan per foto mengalahkan bawaan ini.</p>
+                </section>
+              </>}
             </div>
           </aside>
-        ) : (
-        <aside className="overflow-auto bg-[var(--panel)] border-r border-[var(--line)]">
-          <section className="sect">
-            <h4>Edisi</h4>
-            <div className="field"><label>Nama {mag ? 'majalah' : 'koran'}</label><input type="text" value={data.masthead.name} onChange={e => update(d => { d.masthead.name = e.target.value; })} /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="field"><label>Nomor edisi</label><input type="text" value={data.masthead.number ?? ''} onChange={e => update(d => { d.masthead.number = e.target.value; })} /></div>
-              <div className="field"><label>Tanggal</label><input type="date" value={data.masthead.date} onChange={e => update(d => { d.masthead.date = e.target.value; })} /></div>
-            </div>
-            <div className="field"><label>Semboyan</label><input type="text" value={data.masthead.tagline ?? ''} onChange={e => update(d => { d.masthead.tagline = e.target.value; })} /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="field"><label>Kota</label><input type="text" value={data.masthead.city ?? ''} onChange={e => update(d => { d.masthead.city = e.target.value; })} /></div>
-              <div className="field"><label>Harga</label><input type="text" value={data.masthead.price ?? ''} onChange={e => update(d => { d.masthead.price = e.target.value; })} /></div>
-            </div>
-            {!mag && <div className="field"><label>Keterangan kop</label><input type="text" value={data.masthead.motto ?? ''} onChange={e => update(d => { d.masthead.motto = e.target.value; })} placeholder="Terbit sejak 1962" /></div>}
-            {mag && <div className="field"><label>Teaser sampul (satu per baris)</label><textarea style={{ minHeight: 70, fontFamily: 'inherit' }} value={(data.masthead.coverLines ?? []).join('\n')} onChange={e => update(d => { d.masthead.coverLines = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); })} /></div>}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="field"><label>Gaya kop</label><select value={data.theme.mastheadStyle} onChange={e => update(d => { d.theme.mastheadStyle = e.target.value as EditionData['theme']['mastheadStyle']; })}><option value="black">Gotik klasik</option><option value="serif">Serif tebal</option><option value="caps">Kapital berjarak</option></select></div>
-              <div className="field"><label>Kertas</label><select value={data.theme.tone} onChange={e => update(d => { d.theme.tone = e.target.value as EditionData['theme']['tone']; })}><option value="ivory">Gading hangat</option><option value="aged">Kertas tua</option><option value="sepia">Sepia</option><option value="bright">Putih tulang</option></select></div>
-            </div>
-            <div className="field"><label>Warna aksen</label>
-              <div className="flex gap-1.5 flex-wrap items-center">
-                {['#8b1e1e', '#1f3a5f', '#2f5a30', '#6b4a1f', '#1a1612', '#7a2a6b', '#b8641e', '#c0472b', '#111111'].map(c => <button key={c} className={'swatch' + (data.theme.accent === c ? ' on' : '')} style={{ background: c }} onClick={() => update(d => { d.theme.accent = c; })} />)}
-                <input type="color" value={data.theme.accent} onChange={e => update(d => { d.theme.accent = e.target.value; })} className="w-5 h-5 bg-transparent border-0 p-0" />
-              </div>
-            </div>
-          </section>
-
-          <section className="sect">
-            <h4><span className="whitespace-nowrap">Halaman ({data.pages.length})</span>
-              <select className="input" style={{ width: 'auto', maxWidth: 120, padding: '.2rem .4rem', fontSize: '.7rem', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }} value="" onChange={e => { if (e.target.value) addPage(e.target.value); }}>
-                <option value="">+ Tambah…</option>
-                {presets.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-              </select>
-            </h4>
-            <div className="space-y-1">
-              {data.pages.map((p, i) => (
-                <div key={p.id} className={'item' + (i === sel.page ? ' on' : '')} onClick={() => setSel({ page: i, block: null })}>
-                  <span className="tag">{i + 1}</span><span className="t">{p.section || '—'}</span>
-                  <span className="mini">
-                    <button title="Naik" onClick={e => { e.stopPropagation(); movePage(i, -1); }}>↑</button>
-                    <button title="Turun" onClick={e => { e.stopPropagation(); movePage(i, 1); }}>↓</button>
-                    <button title="Hapus" onClick={e => { e.stopPropagation(); removePage(i); }}>✕</button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="sect">
-            <h4>Blok — {page.section}</h4>
-            <div className="field"><label>Nama rubrik halaman</label><input type="text" value={page.section} onChange={e => updatePage(p => { p.section = e.target.value; })} /></div>
-            {mag && <label className="flex items-center gap-2 text-xs mb-2"><input type="checkbox" checked={!!page.dark} onChange={e => updatePage(p => { p.dark = e.target.checked; })} className="accent-[var(--gold)]" /> Halaman gelap</label>}
-            <div className="grid grid-cols-3 gap-1 mb-3">
-              {blockTypes.map(t => <button key={t} className="btn sm" title={BLOCK_TYPES[t].hint} onClick={() => addBlock(t)}>+ {BLOCK_TYPES[t].label}</button>)}
-            </div>
-            <BlockList page={page} sel={sel.block} overflow={overflow} articles={articleMap} onSelect={i => setSel({ page: sel.page, block: i })} onMove={moveBlock} onReorder={reorderBlock} />
-            <div className="flex gap-3 text-[11px] text-[var(--muted)] mt-2"><span>{page.blocks.length} blok</span><span>Isi grid {cells}/144</span><span>{words(page.blocks.map(b => (b.articleId ? articleMap[b.articleId]?.body : b.body) ?? '').join(' '))} kata</span></div>
-            {cells > 144 && <div className="warnbox">Total ukuran blok melebihi kapasitas halaman (12×12). Blok yang tidak muat akan terpotong.</div>}
-          </section>
-        </aside>
-        )}
 
         {/* ---------- kanvas ---------- */}
         <div ref={canvasRef} className="ed-canvas relative overflow-auto flex items-start justify-center p-7 bg-[radial-gradient(ellipse_at_50%_0%,#2b2520_0%,#15120f_70%)]">
           <div ref={pgWrapRef} className="relative shrink-0 shadow-[0_20px_60px_rgba(0,0,0,.55)]" style={{ transformOrigin: '0 0' }}>
             <div style={{ transformOrigin: '0 0' }}>
-              <PageView edition={data} index={sel.page} articles={articleMap} edit selected={sel.block} onBlockClick={bi => setSel({ page: sel.page, block: bi })} className="[transform-origin:0_0]" />
+              <PageView edition={data} index={sel.page} articles={articleMap} edit live="preview" selected={sel.block} onBlockClick={bi => setSel({ page: sel.page, block: bi })} className="[transform-origin:0_0]" />
             </div>
-            {mag && <CanvasOverlay wrapRef={pgWrapRef} page={page} selected={sel.block} version={sel.page}
+            {<CanvasOverlay wrapRef={pgWrapRef} page={page} selected={sel.block} version={sel.page}
               onSelect={bi => setSel({ page: sel.page, block: bi })} onChange={setRect}
-              onDropBlock={(t, cell) => addBlock(t, cell)} onDropMedia={(m, cell, target) => dropMedia(m, cell, target)} />}
+              onDropBlock={(t, cell) => { if (t === 'live') { addBlock('image', cell); setLiveIntent(x => x + 1); } else addBlock(t, cell); }} onDropMedia={(m, cell, target) => dropMedia(m, cell, target)} />}
           </div>
           <div className="ed-status absolute left-4 bottom-3 text-[11px] text-[var(--muted)] bg-[rgba(20,16,13,.7)] px-2 py-1 rounded">Halaman {sel.page + 1} / {data.pages.length} · {page.section}{overflow.length ? ` · ${overflow.length} blok teks meluap` : ''}</div>
-          {mag && <div className="ed-hint absolute right-4 bottom-3 text-[11px]">Seret blok = pindah · tarik sudut = ubah ukuran · ←↑→↓ geser · Shift+panah ukuran · Del hapus · Ctrl+D gandakan</div>}
+          {<div className="ed-hint absolute right-4 bottom-3 text-[11px]">Seret blok = pindah · tarik sudut = ubah ukuran · ←↑→↓ geser · Shift+panah ukuran · Del hapus · Ctrl+D gandakan</div>}
         </div>
 
         {/* ---------- inspektur ---------- */}
         <aside className="overflow-auto bg-[var(--panel)] border-l border-[var(--line)]">
           {!block ? (
-            <div className="p-6 text-center text-sm text-[var(--muted)] leading-relaxed"><div className="font-display text-lg text-[var(--text)] mb-2">{mag ? 'Pilih keping' : 'Inspektur blok'}</div>{mag ? 'Klik blok di halaman untuk mengedit teks & foto. Seret untuk memindah, tarik sudut kanan-bawah untuk mengubah ukuran. Tambah keping atau foto dari tab di kiri.' : 'Pilih blok pada halaman atau pada daftar di kiri untuk menyunting isi, ukuran, dan gambar.'}</div>
+            <div className="p-6 text-center text-sm text-[var(--muted)] leading-relaxed"><div className="font-display text-lg text-[var(--text)] mb-2">{'Pilih keping'}</div>{'Klik blok di halaman untuk mengedit teks & foto. Seret untuk memindah, tarik sudut kanan-bawah untuk mengubah ukuran. Tambah keping atau foto dari tab di kiri.' }</div>
           ) : (
             <Inspector block={block} sel={sel} data={data} pub={pub} overflow={overflow.includes(sel.block!)} readyArticles={readyArticles} articleMap={articleMap}
               setB={setB} onDelete={removeBlock} onDuplicate={duplicateBlock} onMoveToPage={moveBlockToPage} onLink={linkArticle} onUnlink={unlinkArticle}
-              onRestack={mag ? restack : undefined}
+              onRestack={restack} liveIntent={liveIntent}
               pickImage={cb => setPicker(() => cb)} />
           )}
         </aside>
@@ -416,8 +376,11 @@ interface InspectorProps {
   setB: <K extends keyof Block>(k: K, v: Block[K]) => void; onDelete: () => void; onDuplicate: () => void; onMoveToPage: (to: number) => void;
   onLink: (id: string) => void; onUnlink: () => void; pickImage: (cb: (m: { url: string; path?: string | null }) => void) => void;
   onRestack?: (front: boolean) => void;
+  liveIntent?: number;
 }
-function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleMap, setB, onDelete, onDuplicate, onMoveToPage, onLink, onUnlink, pickImage, onRestack }: InspectorProps) {
+function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleMap, setB, onDelete, onDuplicate, onMoveToPage, onLink, onUnlink, pickImage, onRestack, liveIntent = 0 }: InspectorProps) {
+  const [galIdx, setGalIdx] = useState<number | null>(null);
+  const openLive = liveIntent > 0 && b.type === 'image' && !b.img;
   const [q, setQ] = useState('');
   const linked = b.articleId ? articleMap[b.articleId] : null;
   const textual = ['lead', 'article', 'brief', 'text', 'feature', 'cover'].includes(b.type);
@@ -511,8 +474,9 @@ function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleM
             <div className="text-xs text-[var(--muted)]"><img src={imgSrc(linked.cover_url, mag) ?? undefined} alt="" className="w-full rounded mb-2" />Foto mengikuti naskah tertaut.</div>
           ) : (
             <>
-              {b.img?.url ? <img src={imgSrc(b.img.url, mag) ?? undefined} alt="" className="w-full rounded border border-[var(--line)] mb-2" /> : <div className="rounded border border-dashed border-[var(--line)] h-20 flex items-center justify-center text-xs text-[var(--muted)] mb-2">Belum ada gambar</div>}
-              <div className="flex gap-2 mb-2"><button className="btn sm" onClick={() => pickImage(m => setB('img', { url: m.url, path: m.path ?? null }))}>Pilih / unggah</button>{b.img && <button className="btn sm" onClick={() => setB('img', null)}>Lepas</button>}</div>
+              {posterOf(b.img) ? <img src={imgSrc(posterOf(b.img), mag) ?? undefined} alt="" className="w-full rounded border border-[var(--line)] mb-2" /> : <div className="rounded border border-dashed border-[var(--line)] h-20 flex items-center justify-center text-xs text-[var(--muted)] mb-2">Belum ada gambar</div>}
+              <div className="flex gap-2 mb-2"><button className="btn sm" onClick={() => pickImage(m => setB('img', { ...(b.img ?? {}), url: m.url, path: m.path ?? null }))}>{b.img?.motion ? 'Ganti gambar diam' : 'Pilih / unggah'}</button>{b.img && <button className="btn sm" onClick={() => setB('img', null)}>Lepas</button>}</div>
+              <MotionPanel key={b.id + ':' + liveIntent} pub={pub} image={b.img} onChange={im => setB('img', im)} open={openLive} />
             </>
           )}
           {!['ad', 'cover', 'feature'].includes(b.type) && <div className="field"><label>Keterangan foto</label><textarea style={{ minHeight: 44, fontFamily: 'inherit' }} value={(ro ? linked?.cover_caption : b.cap) ?? ''} readOnly={ro} onChange={e => setB('cap', e.target.value)} /></div>}
@@ -524,9 +488,10 @@ function Inspector({ block: b, sel, data, pub, overflow, readyArticles, articleM
         <section className="sect"><h4>Galeri (maks 4)</h4>
           <div className="grid grid-cols-2 gap-2 mb-2">
             {(b.images ?? []).map((im, i) => (
-              <div key={i} className="relative group"><img src={imgSrc(im.url, mag) ?? undefined} alt="" className="w-full aspect-[4/3] object-cover rounded border border-[var(--line)]" /><button className="btn sm absolute top-1 right-1 opacity-0 group-hover:opacity-100" onClick={() => setB('images', (b.images ?? []).filter((_, j) => j !== i))}>✕</button></div>
+              <div key={i} className={'relative group rounded' + (galIdx === i ? ' ring-2 ring-[var(--gold)]' : '')}><img src={imgSrc(posterOf(im), mag) ?? undefined} alt="" className="w-full aspect-[4/3] object-cover rounded border border-[var(--line)]" />{im.motion && <span className="vbadge">✦</span>}<button className="btn sm absolute top-1 right-1 opacity-0 group-hover:opacity-100" onClick={() => { setB('images', (b.images ?? []).filter((_, j) => j !== i)); setGalIdx(null); }}>✕</button><button className="btn sm absolute bottom-1 right-1 opacity-0 group-hover:opacity-100" title="Foto hidup" onClick={() => setGalIdx(galIdx === i ? null : i)}>✦</button></div>
             ))}
           </div>
+          {galIdx != null && (b.images ?? [])[galIdx] && <MotionPanel key={b.id + ':g' + galIdx} pub={pub} title={`Foto ${galIdx + 1} hidup`} open image={(b.images ?? [])[galIdx]} onChange={im => setB('images', (b.images ?? []).map((x, j) => j === galIdx ? (im ?? { url: '' }) : x))} />}
           {(b.images ?? []).length < 4 && <button className="btn sm" onClick={() => pickImage(m => setB('images', [...(b.images ?? []), { url: m.url, path: m.path ?? null }]))}>+ Tambah foto</button>}
           <div className="field mt-2"><label>Keterangan galeri</label><textarea style={{ minHeight: 44, fontFamily: 'inherit' }} value={b.cap ?? ''} onChange={e => setB('cap', e.target.value)} /></div>
         </section>

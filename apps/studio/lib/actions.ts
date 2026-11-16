@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createClient, getSession } from '@press/db/server';
-import { magazineTemplatePages, newEditionData, newPage, PAGE_PRESETS } from '@press/ui';
+import { DEFAULT_MOTION, magazineTemplatePages, newEditionData, newPage, PAGE_PRESETS } from '@press/ui';
 import type { Publication } from '@press/db';
 
 export async function createArticle(pubId: string, pubSlug: string) {
@@ -27,6 +27,7 @@ export async function createEdition(pub: Publication, opts: { withTemplate?: boo
   if (!user) redirect('/masuk');
   const s = pub.settings ?? {};
   const data = newEditionData(pub.type, { name: pub.name, tagline: pub.tagline ?? '', city: pub.city ?? '', price: s.price ?? '', motto: s.motto ?? '' }, { accent: s.accent, tone: s.tone, mastheadStyle: s.mastheadStyle });
+  data.motion = { ...DEFAULT_MOTION, ...Object.fromEntries(Object.entries(s.motion ?? {}).filter(([, v]) => v != null)) };
   if (opts.withTemplate) {
     if (pub.type === 'magazine') data.pages = magazineTemplatePages();
     else data.pages = ['np-front', 'np-3col', 'np-3col', 'np-opini', 'np-ads', 'np-3col'].map(id => PAGE_PRESETS.find(p => p.id === id)?.make() ?? newPage());
@@ -51,6 +52,12 @@ export async function updatePublicationSettings(pubId: string, pubSlug: string, 
   const settings = {
     ...(cur?.settings ?? {}),
     openLayout: form.get('openLayout') === 'on',
+    motion: {
+      enabled: form.get('motion_enabled') === 'on',
+      kiosk: form.get('motion_kiosk') === 'on',
+      play: form.get('motion_play') === 'tap' ? 'tap' as const : 'auto' as const,
+      filter: (['none', 'print', 'sepia', 'mono', 'duo'].includes(String(form.get('motion_filter'))) ? String(form.get('motion_filter')) : 'none') as 'none' | 'print' | 'sepia' | 'mono' | 'duo',
+    },
     accent: String(form.get('accent') || '#8b1e1e'), tone: String(form.get('tone') || 'ivory'), mastheadStyle: String(form.get('mastheadStyle') || 'black'),
     price: String(form.get('price') || ''), motto: String(form.get('motto') || ''), frequency: String(form.get('frequency') || ''),
   };

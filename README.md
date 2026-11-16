@@ -38,7 +38,7 @@ Hanya redaktur ke atas yang dapat menandai naskah *Terbit*/*Arsip*. Peran global
 ## 1. Siapkan Supabase (akun baru Anda)
 
 1. Buat project di <https://supabase.com> (region Singapore paling dekat).
-2. Buka **SQL Editor** → *New query* → tempel seluruh isi `supabase/migrations/0001_init.sql` → **Run**, lalu ulangi untuk `0002_open_layout.sql`. (Keduanya aman dijalankan ulang.)
+2. Buka **SQL Editor** → *New query* → tempel seluruh isi `supabase/migrations/0001_init.sql` → **Run**, lalu ulangi untuk `0002_open_layout.sql` dan `0003_live_media.sql`. (Semuanya aman dijalankan ulang.)
 3. Opsional: jalankan `supabase/seed.sql` untuk dua penerbit contoh + paket.
 4. **Authentication → Providers → Email**: aktif. Untuk akun redaksi, admin membuat akun langsung (sudah terkonfirmasi). Untuk pembaca yang mendaftar sendiri, atur *Confirm email* sesuai selera; tambahkan URL aplikasi pembaca ke **Authentication → URL Configuration → Redirect URLs** (`https://<reader-domain>/auth/callback`).
 5. Catat dari **Project Settings → API Keys** (dan **Data API** untuk URL):
@@ -91,12 +91,23 @@ Penerbit bertipe majalah memakai Studio bertema remaja dan editor tata letak beb
 - **Foto** diseret dari tab *Foto* ke ruang kosong (blok foto baru) atau ke blok yang ada (ganti gambar).
 - **Hak tata letak:** bila *Pengaturan → Semua anggota tim boleh menata halaman* aktif (bawaan untuk majalah), semua anggota bisa membuat & menata edisi. Menerbitkan dan menghapus edisi tetap khusus redaktur ke atas (ditegakkan oleh RLS di `0002_open_layout.sql`).
 
+## Foto hidup (gambar yang bergerak)
+
+Setiap slot gambar — foto berita, foto tunggal, galeri, sampul, feature, iklan, latar halaman — bisa dijadikan **foto hidup**, untuk koran maupun majalah:
+
+- **Sumber:** klip video yang diunggah (MP4/WebM/MOV, maks 50 MB; poster dibuat otomatis di peramban) atau tautan YouTube (diputar lewat `youtube-nocookie.com`).
+- **Per foto:** cara putar (*otomatis berulang tanpa suara* / *saat diketuk*), filter (*Asli, Cetak koran, Sepia, Hitam-putih, Duotone aksen*), boleh bersuara.
+- **Per edisi** (editor → tab ⚙ Edisi) dan **per penerbit** (Studio → Pengaturan, bawaan untuk edisi baru): aktif/nonaktif, putar & filter bawaan, sampul ikut bergerak di rak kios.
+- **Pembaca:** tombol ✦ di bilah alat flipbook berganti *aktif → hemat data → mati*; bawaan "hemat data" bila peramban meminta hemat data atau mengurangi gerakan. Hanya halaman yang sedang terlihat yang memutar video; cetak/PDF/thumbnail memakai gambar diamnya.
+- Editor tata letak "Lego" (seret, ubah ukuran, keping, laci foto) kini berlaku untuk koran **dan** majalah; keping **✦ Foto Hidup** ada di tab Keping.
+
 ## Struktur data edisi (ringkas)
 
 ```
 EditionData { kind, masthead{name,number,date,…}, theme{accent,tone,mastheadStyle}, pages[] }
 Page        { section, stage?: cover|toc|editorial|main|free, locked?, dark?, bg?, blocks[] }
 Block       { type: lead|article|brief|image|quote|ad|cover|toc|text|feature|gallery, w(1-12), h(1-12), x?/y? (posisi bebas 0-11),
+              img?: { url, path?, motion?: { kind: file|youtube, src, filter?, play?, sound?, start? } },
               cols, scale, dropcap, articleId?, kicker, title, deck, byline, body, img, images[], cap, imgH, invert }
 ```
 

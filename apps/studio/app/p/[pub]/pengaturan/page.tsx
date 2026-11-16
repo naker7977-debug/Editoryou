@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requirePub } from '@/lib/pub';
 import { canManageMembers, layoutOpen } from '@press/db';
+import { MOTION_FILTER_LABEL, type MotionFilter } from '@press/ui';
 import { updatePublicationSettings } from '@/lib/actions';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,7 @@ export default async function Settings({ params }: { params: Promise<{ pub: stri
   if (!(role === 'superadmin' || canManageMembers(role))) redirect(`/p/${slug}`);
   const s = pub.settings ?? {};
   const action = updatePublicationSettings.bind(null, pub.id, pub.slug);
+  const mo = pub.settings?.motion ?? {};
   return (
     <div className="p-8 max-w-3xl w-full">
       <div className="text-[10px] tracking-[.3em] uppercase text-[var(--gold)] font-semibold">Pengaturan</div>
@@ -34,6 +36,16 @@ export default async function Settings({ params }: { params: Promise<{ pub: stri
           <span className="text-sm"><b>Semua anggota tim boleh menata halaman & membuat edisi</b><br /><span className="text-[var(--muted)] text-xs">Cocok untuk tim kecil. Matikan bila tim sudah besar — penataan kembali khusus Pemimpin Redaksi, Redaktur, dan Penata Letak. Menerbitkan & menghapus edisi tetap khusus redaktur ke atas.</span></span>
         </label>
         <p className="text-xs text-[var(--muted)] mb-4">Nilai ini menjadi bawaan untuk edisi baru. Nama & slug penerbit diubah oleh admin platform.</p>
+        <div className="card p-4 mb-4">
+          <div className="font-bold text-sm mb-1">✦ Foto hidup</div>
+          <p className="text-xs text-[var(--muted)] mb-3">Bawaan untuk <b>edisi baru</b>. Setiap edisi bisa diubah di editor (tab ⚙ Edisi), dan setiap foto bisa punya pengaturannya sendiri.</p>
+          <label className="flex items-center gap-2 text-sm mb-2"><input type="checkbox" name="motion_enabled" defaultChecked={mo.enabled !== false} className="accent-[var(--gold)]" /> Aktifkan foto hidup (video &amp; YouTube di halaman)</label>
+          <label className="flex items-center gap-2 text-sm mb-3"><input type="checkbox" name="motion_kiosk" defaultChecked={mo.kiosk !== false} className="accent-[var(--gold)]" /> Sampul ikut bergerak di rak kios pembaca</label>
+          <div className="grid grid-cols-2 gap-3 max-w-md">
+            <div className="field"><label>Cara putar</label><select name="motion_play" defaultValue={mo.play ?? 'auto'}><option value="auto">Otomatis berulang (tanpa suara)</option><option value="tap">Diam sampai diketuk</option></select></div>
+            <div className="field"><label>Filter</label><select name="motion_filter" defaultValue={mo.filter ?? 'none'}>{(Object.keys(MOTION_FILTER_LABEL) as MotionFilter[]).map(f => <option key={f} value={f}>{MOTION_FILTER_LABEL[f]}</option>)}</select></div>
+          </div>
+        </div>
         <button className="btn gold">Simpan pengaturan</button>
       </form>
     </div>

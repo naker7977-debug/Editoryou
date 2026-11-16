@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Flipbook, type FlipbookHandle, type FlipbookState } from './Flipbook';
 import { PageThumb } from './Page';
 import { ReadMode } from './ReadMode';
+import { MOTION_PREF_LABEL, setMotionPref, useMotionPref, type MotionPref } from './Live';
 import { fmtDate, type ArticleMap, type EditionData } from './model';
 
 export interface PressReaderProps {
@@ -22,6 +23,9 @@ export function PressReader({ edition, articles, extraTools, initialPage }: Pres
   const [read, setRead] = useState<{ p: number; b: number } | null>(null);
   const [zoom, setZoom] = useState(1);
   const mag = edition.kind === 'magazine';
+  const motion = useMotionPref();
+  const hasLive = edition.motion?.enabled !== false && edition.pages.some((p) => !!p.bg?.motion || p.blocks.some((b) => !!b.img?.motion || (b.images ?? []).some((i) => !!i.motion)));
+  const cycleMotion = () => { const nx: Record<MotionPref, MotionPref> = { on: 'save', save: 'off', off: 'on' }; setMotionPref(nx[motion]); };
 
   useEffect(() => { try { setSound(localStorage.getItem('press.sound') !== '0'); } catch { /* noop */ } }, []);
   useEffect(() => { if (initialPage != null) { const t = setTimeout(() => fb.current?.goToPage(initialPage), 120); return () => clearTimeout(t); } }, [initialPage]);
@@ -52,6 +56,7 @@ export function PressReader({ edition, articles, extraTools, initialPage }: Pres
           <button onClick={() => setToc(true)} title="Daftar isi">☰</button>
           <button onClick={cycleZoom} title="Perbesar">{zoom > 1 ? zoom + '×' : '⌕'}</button>
           <button onClick={toggleSound} title="Suara halaman">{sound ? '🔔' : '🔕'}</button>
+          {hasLive && <button onClick={cycleMotion} title={MOTION_PREF_LABEL[motion] + ' — ketuk untuk mengganti'} aria-label={MOTION_PREF_LABEL[motion]} className={'mv-' + motion}>{motion === 'on' ? '✦' : motion === 'save' ? '◐' : '○'}</button>}
           <button onClick={fullscreen} title="Layar penuh">⛶</button>
         </div>
       </div>

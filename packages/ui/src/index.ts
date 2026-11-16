@@ -2,6 +2,8 @@ export * from './model';
 export { svgArt, imgSrc } from './svgArt';
 export type { ArtKind, ArtPalette } from './svgArt';
 export { PageView, PageThumb, markOverflow } from './Page';
+export { Media, LiveCtx, useMotionPref, setMotionPref, MOTION_PREF_LABEL } from './Live';
+export type { MotionPref } from './Live';
 export type { PageViewProps } from './Page';
 export { Flipbook } from './Flipbook';
 export type { FlipbookHandle, FlipbookState, FlipbookProps } from './Flipbook';

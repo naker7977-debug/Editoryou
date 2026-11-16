@@ -26,6 +26,8 @@ export interface PublicationSettings {
   frequency?: string;
   /** Semua anggota boleh menata halaman & membuat edisi (bawaan: ya untuk majalah). */
   openLayout?: boolean;
+  /** Foto hidup: bawaan untuk edisi baru. */
+  motion?: { enabled?: boolean; filter?: 'none' | 'print' | 'sepia' | 'mono' | 'duo'; play?: 'auto' | 'tap'; kiosk?: boolean };
 }
 
 export interface Publication {
@@ -101,6 +103,9 @@ export interface Media {
   size_bytes: number | null;
   uploader_id: string | null;
   created_at: string;
+  /** 'video' untuk foto hidup (berkas video); poster_url = bingkai diamnya. */
+  kind?: 'image' | 'video' | null;
+  poster_url?: string | null;
 }
 
 export interface Plan {

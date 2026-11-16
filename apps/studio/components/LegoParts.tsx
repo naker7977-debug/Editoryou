@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createClient } from '@press/db/browser';
 import type { Media, Publication } from '@press/db';
-import { BLOCK_TYPES, PAGE_PRESETS, PageThumb, STAGE_LABEL, autoPlace, imgSrc, type Block, type BlockType, type EditionData, type Page } from '@press/ui';
-import { uploadMedia } from '@/lib/upload';
+import { BLOCK_TYPES, PAGE_PRESETS, PageThumb, STAGE_LABEL, autoPlace, imgSrc, type Block, type BlockImage, type BlockType, type EditionData, type Page, type PublicationKind } from '@press/ui';
+import { isVideoMedia, uploadMedia, uploadVideo } from '@/lib/upload';
+import { imageFromVideo } from './LivePanel';
 
 export const DT_BLOCK = 'application/x-editoryou-block';
 export const DT_MEDIA = 'application/x-editoryou-media';
@@ -31,8 +32,8 @@ const boxStyle = (g: Geo, r: Rect) => ({ left: g.left + r.x * g.pw, top: g.top +
 export function CanvasOverlay({ wrapRef, page, selected, onSelect, onChange, onDropBlock, onDropMedia, version }: {
   wrapRef: React.RefObject<HTMLDivElement | null>; page: Page; selected: number | null; version: unknown;
   onSelect: (bi: number | null) => void; onChange: (bi: number, r: Rect) => void;
-  onDropBlock: (type: BlockType, cell: { x: number; y: number }) => void;
-  onDropMedia: (m: { url: string; path?: string | null }, cell: { x: number; y: number }, target: number | null) => void;
+  onDropBlock: (type: BlockType | 'live', cell: { x: number; y: number }) => void;
+  onDropMedia: (m: BlockImage, cell: { x: number; y: number }, target: number | null) => void;
 }) {
   const [geo, setGeo] = useState<Geo | null>(null);
   const [ghost, setGhost] = useState<(Rect & { bi: number }) | null>(null);
@@ -95,7 +96,7 @@ export function CanvasOverlay({ wrapRef, page, selected, onSelect, onChange, onD
       onDragLeave={e => { if (e.target === e.currentTarget) setDropCell(null); }}
       onDrop={e => {
         e.preventDefault(); const cell = cellAt(e.clientX, e.clientY); setDropCell(null); if (!cell) return;
-        const t = e.dataTransfer.getData(DT_BLOCK) as BlockType;
+        const t = e.dataTransfer.getData(DT_BLOCK) as BlockType | 'live';
         if (t) { onDropBlock(t, cell); return; }
         const m = e.dataTransfer.getData(DT_MEDIA);
         if (m) { try { onDropMedia(JSON.parse(m), cell, hitBlock(cell)); } catch { /* abaikan */ } }
@@ -121,11 +122,11 @@ export function CanvasOverlay({ wrapRef, page, selected, onSelect, onChange, onD
 /* ============================================================
    Jalur lembar: tahapan inti terkunci + halaman kreatif
    ============================================================ */
-export function StageRail({ data, current, onSelect, onMove, onRemove, onAdd }: {
-  data: EditionData; current: number; onSelect: (i: number) => void; onMove: (i: number, dir: -1 | 1) => void; onRemove: (i: number) => void; onAdd: (presetId: string) => void;
+export function StageRail({ data, kind, current, onSelect, onMove, onRemove, onAdd }: {
+  data: EditionData; kind: PublicationKind; current: number; onSelect: (i: number) => void; onMove: (i: number, dir: -1 | 1) => void; onRemove: (i: number) => void; onAdd: (presetId: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
-  const presets = PAGE_PRESETS.filter(p => p.kinds.includes('magazine') && !['mg-cover', 'mg-toc', 'mg-editorial', 'mg-main'].includes(p.id));
+  const presets = PAGE_PRESETS.filter(p => p.kinds.includes(kind) && !['mg-cover', 'mg-toc', 'mg-editorial', 'mg-main'].includes(p.id));
   const lastLocked = data.pages.reduce((a, p, i) => (p.locked ? i : a), -1);
   return (
     <div className="p-3">
@@ -135,7 +136,7 @@ export function StageRail({ data, current, onSelect, onMove, onRemove, onAdd }: 
             <div className={'rail-item' + (i === current ? ' on' : '')} onClick={() => onSelect(i)}>
               <div className="rail-thumb"><PageThumb edition={data} index={i} /></div>
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-bold text-[var(--muted)] flex items-center gap-1">{i + 1} · {STAGE_LABEL[p.stage ?? 'free']}{p.locked && <span title="Lembar inti templat — tidak bisa dipindah/dihapus">🔒</span>}</div>
+                <div className="text-[10px] font-bold text-[var(--muted)] flex items-center gap-1">{i + 1} · {kind === 'magazine' ? STAGE_LABEL[p.stage ?? 'free'] : i === 0 ? 'Halaman muka' : 'Halaman ' + (i + 1)}{p.locked && <span title="Lembar inti templat — tidak bisa dipindah/dihapus">🔒</span>}</div>
                 <div className="text-xs font-semibold truncate">{p.section || '—'}</div>
                 <div className="text-[10px] text-[var(--muted)]">{p.blocks.length} blok</div>
               </div>
@@ -152,10 +153,10 @@ export function StageRail({ data, current, onSelect, onMove, onRemove, onAdd }: 
         ))}
       </ol>
       {!adding ? (
-        <button className="btn gold w-full justify-center mt-3" onClick={() => setAdding(true)}>＋ Lembar kreatif</button>
+        <button className="btn gold w-full justify-center mt-3" onClick={() => setAdding(true)}>{kind === 'magazine' ? '＋ Lembar kreatif' : '＋ Halaman baru'}</button>
       ) : (
         <div className="mt-3">
-          <div className="flex items-center justify-between mb-2"><b className="text-xs">Pilih pola lembar</b><button className="text-xs text-[var(--muted)]" onClick={() => setAdding(false)}>Tutup</button></div>
+          <div className="flex items-center justify-between mb-2"><b className="text-xs">{kind === 'magazine' ? 'Pilih pola lembar' : 'Pilih susunan halaman'}</b><button className="text-xs text-[var(--muted)]" onClick={() => setAdding(false)}>Tutup</button></div>
           <div className="grid grid-cols-2 gap-2">
             {presets.map(pr => <button key={pr.id} className="preset-tile" onClick={() => { onAdd(pr.id); setAdding(false); }}>{pr.label}</button>)}
           </div>
@@ -169,10 +170,17 @@ export function StageRail({ data, current, onSelect, onMove, onRemove, onAdd }: 
    Palet blok (keping Lego) — seret ke halaman atau klik
    ============================================================ */
 const ICONS: Partial<Record<BlockType, string>> = { text: '¶', article: '☰', brief: '✦', image: '▣', gallery: '▦', quote: '❝', ad: '★', feature: '◩', cover: '◼', toc: '≡', lead: '◧' };
-export function BlockPalette({ types, onAdd }: { types: BlockType[]; onAdd: (t: BlockType) => void }) {
+export function BlockPalette({ types, onAdd, onAddLive }: { types: BlockType[]; onAdd: (t: BlockType) => void; onAddLive?: () => void }) {
   return (
     <div className="p-3">
       <p className="text-[11px] text-[var(--muted)] mb-3 leading-relaxed">Seret keping ke halaman, atau klik untuk menaruhnya di tempat kosong. Keping bisa ditumpuk seperti Lego.</p>
+      {onAddLive && (
+        <button className="lego-piece live w-full mb-2" draggable title="Foto yang bergerak: klip video pendek atau YouTube"
+          onDragStart={e => { e.dataTransfer.setData(DT_BLOCK, 'live'); e.dataTransfer.effectAllowed = 'copy'; }} onClick={onAddLive}>
+          <span className="ic" aria-hidden>✦</span>
+          <span className="min-w-0"><b>Foto Hidup</b><small>video / YouTube yang bergerak di halaman</small></span>
+        </button>
+      )}
       <div className="grid grid-cols-2 gap-2">
         {types.map(t => (
           <button key={t} className="lego-piece" draggable title={BLOCK_TYPES[t].hint}
@@ -190,7 +198,7 @@ export function BlockPalette({ types, onAdd }: { types: BlockType[]; onAdd: (t: 
 /* ============================================================
    Laci foto — seret foto ke halaman atau ke blok
    ============================================================ */
-export function PhotoDrawer({ pub, onUse, preload }: { pub: Publication; onUse: (m: { url: string; path?: string | null }) => void; preload?: Media[] }) {
+export function PhotoDrawer({ pub, onUse, preload }: { pub: Publication; onUse: (m: BlockImage) => void; preload?: Media[] }) {
   const [items, setItems] = useState<Media[]>(preload ?? []);
   const [busy, setBusy] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -203,23 +211,28 @@ export function PhotoDrawer({ pub, onUse, preload }: { pub: Publication; onUse: 
   async function onFiles(files: FileList | null) {
     if (!files?.length || demo) return; setErr(null); setBusy(files.length);
     for (const f of Array.from(files)) {
-      try { const m = await uploadMedia(f, pub.id); setItems(x => [m, ...x]); } catch (e) { setErr((e as Error).message); } finally { setBusy(n => n - 1); }
+      try { const m = f.type.startsWith('video/') ? await uploadVideo(f, pub.id) : await uploadMedia(f, pub.id); setItems(x => [m, ...x]); } catch (e) { setErr(`${f.name}: ${(e as Error).message}`); } finally { setBusy(n => n - 1); }
     }
   }
   return (
     <div className="p-3" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); onFiles(e.dataTransfer.files); } }}>
-      <button className="btn gold w-full justify-center mb-2" disabled={busy > 0 || demo} onClick={() => inp.current?.click()}>{busy ? `Mengunggah ${busy}…` : '⬆ Unggah foto'}</button>
-      <input ref={inp} type="file" accept="image/*" multiple className="hidden" onChange={e => { onFiles(e.target.files); e.target.value = ''; }} />
-      <p className="text-[11px] text-[var(--muted)] mb-3 leading-relaxed">Seret foto ke <b>ruang kosong</b> untuk membuat blok foto baru, atau ke <b>blok yang sudah ada</b> untuk mengganti gambarnya. Klik foto untuk memasang ke blok terpilih.</p>
+      <button className="btn gold w-full justify-center mb-2" disabled={busy > 0 || demo} onClick={() => inp.current?.click()}>{busy ? `Mengunggah ${busy}…` : '⬆ Unggah foto / video'}</button>
+      <input ref={inp} type="file" accept="image/*,video/mp4,video/webm,video/quicktime" multiple className="hidden" onChange={e => { onFiles(e.target.files); e.target.value = ''; }} />
+      <p className="text-[11px] text-[var(--muted)] mb-3 leading-relaxed">Seret foto ke <b>ruang kosong</b> untuk membuat blok foto baru, atau ke <b>blok yang sudah ada</b> untuk mengganti gambarnya. Klik foto untuk memasang ke blok terpilih. Item bertanda ▶ adalah <b>foto hidup</b> (video).</p>
       {err && <div className="warnbox mb-2">{err}</div>}
       <div className="grid grid-cols-2 gap-2">
-        {items.map(m => (
-          <button key={m.id} className="photo-tile" draggable title={m.caption ?? ''}
-            onDragStart={e => { e.dataTransfer.setData(DT_MEDIA, JSON.stringify({ url: m.url, path: m.path })); e.dataTransfer.effectAllowed = 'copy'; }}
-            onClick={() => onUse({ url: m.url, path: m.path })}>
-            <img src={imgSrc(m.url, true) ?? m.url} alt={m.caption ?? ''} draggable={false} loading="lazy" />
-          </button>
-        ))}
+        {items.map(m => {
+          const vid = isVideoMedia(m);
+          const im: BlockImage = vid ? imageFromVideo(m) : { url: m.url, path: m.path };
+          return (
+            <button key={m.id} className="photo-tile relative" draggable title={m.caption ?? ''}
+              onDragStart={e => { e.dataTransfer.setData(DT_MEDIA, JSON.stringify(im)); e.dataTransfer.effectAllowed = 'copy'; }}
+              onClick={() => onUse(im)}>
+              {vid ? (m.poster_url ? <img src={m.poster_url} alt={m.caption ?? ''} draggable={false} loading="lazy" /> : <video src={m.url} muted preload="metadata" />) : <img src={imgSrc(m.url, true) ?? m.url} alt={m.caption ?? ''} draggable={false} loading="lazy" />}
+              {vid && <span className="vbadge">▶</span>}
+            </button>
+          );
+        })}
       </div>
       {items.length === 0 && <div className="text-xs text-[var(--muted)] text-center py-6">{demo ? 'Mode demo: unggah dinonaktifkan.' : 'Belum ada foto. Unggah atau seret berkas ke sini.'}</div>}
     </div>

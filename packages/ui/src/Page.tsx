@@ -1,7 +1,7 @@
 'use client';
-import React, { useEffect, useRef } from 'react';
-import { clamp, fmtDate, paras, resolveBlock, type ArticleMap, type Block, type EditionData } from './model';
-import { imgSrc } from './svgArt';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { DEFAULT_MOTION, clamp, fmtDate, paras, posterOf, resolveBlock, type ArticleMap, type Block, type EditionData } from './model';
+import { LiveCtx, Media } from './Live';
 
 export interface PageViewProps {
   edition: EditionData;
@@ -14,6 +14,8 @@ export interface PageViewProps {
   onOverflow?: (indices: number[]) => void;
   className?: string;
   style?: React.CSSProperties;
+  /** Foto hidup boleh bergerak di halaman ini (halaman yang sedang terlihat); 'preview' = editor. */
+  live?: boolean | 'preview';
 }
 
 /** Ukur blok yang teksnya tidak muat; tandai kelas .over. Mengembalikan indeks blok. */
@@ -32,7 +34,8 @@ export function markOverflow(pgEl: HTMLElement): number[] {
 
 const EMPTY: ArticleMap = {};
 
-export function PageView({ edition, index, articles = EMPTY, edit, selected, onBlockClick, onOverflow, className, style }: PageViewProps) {
+export function PageView({ edition, index, articles = EMPTY, edit, selected, onBlockClick, onOverflow, className, style, live = false }: PageViewProps) {
+  const liveVal = useMemo(() => ({ live, settings: { ...DEFAULT_MOTION, ...(edition.motion ?? {}) } }), [live, edition.motion]);
   const ref = useRef<HTMLDivElement>(null);
   const page = edition.pages[index];
   const mag = edition.kind === 'magazine';
@@ -51,14 +54,15 @@ export function PageView({ edition, index, articles = EMPTY, edit, selected, onB
 
   if (!page) return null;
   const fullBleed = page.blocks.some((b) => (b.type === 'cover' || b.type === 'feature') && b.w >= 12 && b.h >= 12);
-  const dark = !!page.dark || !!page.bg?.url;
-  const cls = ['pg', mag ? 'mag' : 'news', 'tone-' + (theme.tone || (mag ? 'bright' : 'ivory')), edit ? 'edit' : '', page.bg?.url ? 'hasbg' : '', dark ? 'dark' : '', fullBleed ? 'bleedpage' : '', className || ''].filter(Boolean).join(' ');
-  const bg = imgSrc(page.bg?.url, mag);
+  const dark = !!page.dark || !!posterOf(page.bg);
+  const cls = ['pg', mag ? 'mag' : 'news', 'tone-' + (theme.tone || (mag ? 'bright' : 'ivory')), edit ? 'edit' : '', posterOf(page.bg) ? 'hasbg' : '', dark ? 'dark' : '', fullBleed ? 'bleedpage' : '', className || ''].filter(Boolean).join(' ');
+  const bg = posterOf(page.bg);
 
   return (
+    <LiveCtx.Provider value={liveVal}>
     <div ref={ref} className={cls} style={{ ['--p-accent' as string]: theme.accent || '#8b1e1e', ...style }}
       onClick={edit && onBlockClick ? (e) => { const t = (e.target as HTMLElement).closest('.blk') as HTMLElement | null; onBlockClick(t ? Number(t.dataset.bi) : null); } : undefined}>
-      {bg && <div className="pgbg"><img src={bg} alt="" draggable={false} /></div>}
+      {bg && <div className="pgbg"><Media im={page.bg} mag={mag} /></div>}
       {!mag && index === 0 && !fullBleed && (
         <div className={'masthead ' + mh}>
           <div className="ears">
@@ -83,22 +87,19 @@ export function PageView({ edition, index, articles = EMPTY, edit, selected, onB
       {!mag && !fullBleed && <div className="pgfoot"><span>{masthead.name}</span><span>{page.section} · {index + 1}</span><span>{fmtDate(masthead.date)}</span></div>}
       {mag && !fullBleed && <div className="mfoot"><span>{masthead.tagline || masthead.number}</span><span className="pn">{index + 1}</span></div>}
     </div>
+    </LiveCtx.Provider>
   );
 }
 
-function Img({ url, alt, mag }: { url?: string | null; alt?: string; mag: boolean }) {
-  const src = imgSrc(url, mag);
-  return src ? <img src={src} alt={alt || ''} draggable={false} /> : null;
-}
 
 function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean; edition: EditionData }) {
   const mag = edition.kind === 'magazine';
   const w = clamp(b.w || 4, 1, 12), h = clamp(b.h || 4, 1, 12);
   const textual = ['lead', 'article', 'brief', 'text'].includes(b.type);
-  const cls = ['blk', 't-' + b.type, 'w' + w, 'h' + h, 's-' + (b.scale || 'm'), sel ? 'sel' : '', b.invert ? 'invert' : ''];
+  const cls = ['blk', 't-' + b.type, 'w' + w, 'h' + h, 's-' + (b.scale || 'm'), sel ? 'sel' : '', b.invert ? 'onphoto' : ''];
   if (b.dropcap && ['lead', 'article', 'text'].includes(b.type)) cls.push('dc');
   if (['lead', 'article', 'brief', 'text', 'quote', 'feature'].includes(b.type)) cls.push('readable');
-  if (b.img?.url && textual) cls.push('hasimg');
+  if (posterOf(b.img) && textual) cls.push('hasimg');
   const placed = b.x != null && b.y != null;
   const x = placed ? clamp(b.x!, 0, 12 - w) : 0, y = placed ? clamp(b.y!, 0, 11) : 0;
   const style: React.CSSProperties = placed
@@ -112,11 +113,11 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
       inner = <div className="cin"><div className="q">{b.body || '…'}</div>{b.byline && <div className="src">{b.byline}</div>}</div>;
       break;
     case 'ad': {
-      const src = imgSrc(b.img?.url, mag);
+      const src = posterOf(b.img);
       inner = (<>
         <div className="lbl">Iklan</div>
         <div className="cin">
-          {src && <div className="fig" style={{ height: Math.round(h * 22) }}><div className="imw" style={{ height: '100%' }}><img src={src} alt="" draggable={false} /></div></div>}
+          {src && <div className="fig" style={{ height: Math.round(h * 22) }}><div className="imw" style={{ height: '100%' }}><Media im={b.img} mag={mag} /></div></div>}
           <div className={'ttl' + (w < 4 || h < 3 ? ' sm' : '')}>{b.title}</div>
           {b.body && <div className="adb">{b.body}</div>}
           {b.byline && <div className="adc">{b.byline}</div>}
@@ -127,7 +128,7 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
     case 'image':
       inner = (
         <div className="fig">
-          <div className="imw">{b.img?.url ? <Img url={b.img.url} alt={b.cap} mag={mag} /> : <div className="noimg">Foto belum dipilih</div>}</div>
+          <div className="imw">{posterOf(b.img) || b.img?.motion ? <Media im={b.img} alt={b.cap} mag={mag} /> : <div className="noimg">Foto belum dipilih</div>}</div>
           {(b.title || b.cap) && <div className="cap">{b.title && <b>{b.title} </b>}{b.cap}</div>}
         </div>
       );
@@ -135,7 +136,7 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
     case 'gallery': {
       const imgs = (b.images ?? []).slice(0, 4);
       inner = (<>
-        <div className={'gg n' + Math.max(1, imgs.length)}>{imgs.length ? imgs.map((im, i) => <div className="gi" key={i}><Img url={im.url} mag={mag} /></div>) : <div className="noimg">Tambahkan 2–4 foto</div>}</div>
+        <div className={'gg n' + Math.max(1, imgs.length)}>{imgs.length ? imgs.map((im, i) => <div className="gi" key={i}><Media im={im} mag={mag} /></div>) : <div className="noimg">Tambahkan 2–4 foto</div>}</div>
         {(b.title || b.cap) && <div className="cap">{b.title && <b>{b.title} </b>}{b.cap}</div>}
       </>);
       break;
@@ -143,7 +144,7 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
     case 'cover': {
       const lines = (ms.coverLines ?? []).filter(Boolean);
       inner = (<>
-        <Img url={b.img?.url} mag={mag} />
+        <Media im={b.img} alt={b.title} mag={mag} />
         <div className="shade" />
         <div className="mtop"><span>{ms.number}</span><span>{fmtDate(ms.date)}</span></div>
         <div className={'mname ' + (edition.theme.mastheadStyle === 'modern' ? 'sans' : edition.theme.mastheadStyle === 'caps' ? 'caps' : '')}>{ms.name}</div>
@@ -159,7 +160,7 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
     }
     case 'feature':
       inner = (<>
-        <Img url={b.img?.url} mag={mag} />
+        <Media im={b.img} alt={b.title} mag={mag} />
         <div className="shade" />
         <div className="fbot">
           {b.kicker && <div className="kick">{b.kicker}</div>}
@@ -185,7 +186,7 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
     default: {
       const ih = b.imgH === 's' ? 0.2 : b.imgH === 'l' ? 0.46 : 0.32;
       const ps = paras(b.body);
-      const src = imgSrc(b.img?.url, mag);
+      const src = posterOf(b.img);
       inner = (<>
         {b.kicker && <div className="kick">{b.kicker}</div>}
         {b.title && <h2 className="ttl">{b.title}</h2>}
@@ -193,7 +194,7 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
         {b.byline && <div className="by"><b>Oleh </b>{b.byline}</div>}
         {src && (
           <div className="fig flex" style={{ height: Math.round(h * (784 - 120) / 12 * ih) }}>
-            <div className="imw"><img src={src} alt={b.cap || b.title || ''} draggable={false} /></div>
+            <div className="imw"><Media im={b.img} alt={b.cap || b.title || ''} mag={mag} /></div>
             {b.cap && <div className="cap"><b>Foto </b>{b.cap}</div>}
           </div>
         )}
@@ -206,7 +207,7 @@ function BlockView({ b, bi, sel, edition }: { b: Block; bi: number; sel: boolean
 }
 
 /** Thumbnail halaman yang menyesuaikan lebar pembungkusnya. */
-export function PageThumb({ edition, index = 0, articles, className, style }: { edition: EditionData; index?: number; articles?: ArticleMap; className?: string; style?: React.CSSProperties }) {
+export function PageThumb({ edition, index = 0, articles, className, style, live }: { edition: EditionData; index?: number; articles?: ArticleMap; className?: string; style?: React.CSSProperties; live?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current; if (!el) return;
@@ -215,5 +216,5 @@ export function PageThumb({ edition, index = 0, articles, className, style }: { 
     const ro = new ResizeObserver(fit); ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  return <div ref={ref} className={'pg-thumb ' + (className || '')} style={style}><PageView edition={edition} index={index} articles={articles} /></div>;
+  return <div ref={ref} className={'pg-thumb ' + (className || '')} style={style}><PageView edition={edition} index={index} articles={articles} live={live} /></div>;
 }

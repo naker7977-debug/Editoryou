@@ -9,5 +9,5 @@ export function CoverThumb({ data, label, sub }: { data: EditionData | null; lab
       </div>
     );
   }
-  return <PageThumb edition={data} index={0} />;
+  return <PageThumb edition={data} index={0} live={data.motion?.enabled !== false && data.motion?.kiosk !== false} />;
 }

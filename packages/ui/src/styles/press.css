@@ -309,3 +309,52 @@
 .pg.bleedpage{padding:0}
 .pg.bleedpage .grid{gap:0}
 .pg.bleedpage::before,.pg.bleedpage::after{display:none}
+
+/* ============ Foto hidup ============ */
+.imw,.gi{position:relative}
+.lv{position:absolute;inset:0;display:block;overflow:hidden}
+.lv .lv-m{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0;display:block;pointer-events:none;background:transparent}
+.lv .lv-m.interactive{pointer-events:auto}
+.blk .fig .lv .lv-m{filter:none}
+.lv.f-print .lv-m{filter:grayscale(1) contrast(1.35) brightness(1.06)}
+.lv.f-print::after{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(20,16,12,.28) .9px,transparent 1.15px);background-size:3px 3px;mix-blend-mode:multiply}
+.lv.f-sepia .lv-m{filter:sepia(.8) contrast(1.05) saturate(.85) brightness(1.02)}
+.lv.f-mono .lv-m{filter:grayscale(1) contrast(1.12)}
+.lv.f-duo .lv-m{filter:grayscale(1) contrast(1.15) brightness(1.05)}
+.lv.f-duo::after{content:"";position:absolute;inset:0;pointer-events:none;background:var(--p-accent);mix-blend-mode:screen;opacity:.55}
+.lv-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;border:2px solid rgba(255,255,255,.92);background:rgba(0,0,0,.42);color:#fff;font-size:15px;display:grid;place-items:center;cursor:pointer;z-index:3;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);box-shadow:0 4px 18px rgba(0,0,0,.35);animation:lv-pulse 2.4s ease-in-out infinite;padding:0}
+.lv-play span{margin-left:3px;line-height:1}
+.lv-snd{position:absolute;right:6px;bottom:6px;z-index:3;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;font-size:12px;cursor:pointer;padding:0}
+.lv-dot{position:absolute;left:6px;top:5px;z-index:3;font:700 7px/1 var(--p-sans);color:#ff4d4d;text-shadow:0 0 6px rgba(255,77,77,.85);animation:lv-blink 2s ease-in-out infinite;pointer-events:none}
+@keyframes lv-pulse{50%{transform:translate(-50%,-50%) scale(1.07)}}
+@keyframes lv-blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.lv-play,.lv-dot{animation:none}}
+
+/* feature: foto memenuhi blok, teks di atas foto */
+.blk.t-feature{padding:0;display:block;background:#1a1612;color:#fff}
+.blk.t-feature>img,.blk.t-feature>.lv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.blk.t-feature .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.72) 100%);pointer-events:none}
+.blk.t-feature .fbot{position:absolute;left:22px;right:22px;bottom:20px}
+.blk.t-feature.onphoto .kick{color:var(--p-gold)}
+.blk.t-feature.onphoto .ttl,.pg.mag .blk.t-feature.onphoto .ttl{color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.35)}
+.blk.t-feature.onphoto .deck,.pg.mag .blk.t-feature.onphoto .deck{color:rgba(255,255,255,.88)}
+.blk.t-feature.onphoto .by,.pg.mag .blk.t-feature.onphoto .by{color:rgba(255,255,255,.75);border-color:rgba(255,255,255,.3)}
+.blk.t-feature.onphoto .by b,.pg.mag .blk.t-feature.onphoto .by b{color:#fff}
+.blk.t-feature:not(.onphoto){background:var(--p-paper-2);color:var(--p-ink)}
+.blk.t-feature:not(.onphoto) .shade{background:linear-gradient(180deg,rgba(255,255,255,0) 45%,var(--p-paper) 88%)}
+
+/* galeri 2–4 foto */
+.blk.t-gallery{display:flex;flex-direction:column}
+.blk .gg{flex:1;min-height:0;display:grid;gap:4px}
+.blk .gg.n1{grid-template-columns:1fr}
+.blk .gg.n2{grid-template-columns:1fr 1fr}
+.blk .gg.n3{grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr}
+.blk .gg.n3 .gi:first-child{grid-row:span 2}
+.blk .gg.n4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.blk .gi{overflow:hidden;min-height:0;background:var(--p-paper-2)}
+.blk .gi>img{width:100%;height:100%;object-fit:cover;display:block}
+.blk.t-gallery>.cap{font-family:var(--p-garamond);font-style:italic;font-size:9.5px;color:var(--p-ink-2);padding-top:3px}
+.pg.mag .blk.t-gallery>.cap{font-family:var(--p-sans);font-style:normal;font-size:8px;color:#777;letter-spacing:.06em}
+.blk.t-gallery .noimg{flex:1;display:flex;align-items:center;justify-content:center;font-style:italic;color:var(--p-ink-3)}
+.pghead,.pgfoot,.masthead,.mhead,.mfoot{position:relative}
+.pgbg>img,.pgbg>.lv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}

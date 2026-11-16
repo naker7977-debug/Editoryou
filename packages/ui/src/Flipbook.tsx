@@ -234,10 +234,12 @@ export const Flipbook = forwardRef<FlipbookHandle, FlipbookProps>(function Flipb
           <div className="fb-stack r"><i /><i /><i /></div>
           {Array.from({ length: N }, (_, k) => {
             const fi = mode === 'single' ? k : 2 * k, bi = mode === 'single' ? -1 : 2 * k + 1;
+            // yang terlihat: muka depan lembar `cur` (kanan) dan muka belakang lembar `cur-1` (kiri)
+            const frontLive = k === cur, backLive = k === cur - 1;
             return (
               <div className="fb-sheet" data-i={k} key={mode + ':' + k + ':' + (edition.pages[fi]?.id ?? '')}>
-                <div className="face front"><PageView edition={edition} index={fi} articles={articles} /><div className="spine" /><div className="edge" /></div>
-                <div className="face back">{bi >= 0 && bi < n ? <PageView edition={edition} index={bi} articles={articles} /> : blank}<div className="spine" /><div className="edge" /></div>
+                <div className="face front"><PageView edition={edition} index={fi} articles={articles} live={frontLive} /><div className="spine" /><div className="edge" /></div>
+                <div className="face back">{bi >= 0 && bi < n ? <PageView edition={edition} index={bi} articles={articles} live={backLive} /> : blank}<div className="spine" /><div className="edge" /></div>
               </div>
             );
           })}
